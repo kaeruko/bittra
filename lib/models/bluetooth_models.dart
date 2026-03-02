@@ -1,0 +1,90 @@
+enum RequestStatus {
+  requested,
+  received,
+  failed,
+  timeout,
+}
+
+class Encounter {
+  final String id;
+  final String peerId;
+  final String teaser;
+  final DateTime receivedAt;
+  final String dedupeKey;
+  final DateTime lastSeenAt;
+  final int count;
+  final int rssi;
+
+  const Encounter({
+    required this.id,
+    required this.peerId,
+    required this.teaser,
+    required this.receivedAt,
+    required this.dedupeKey,
+    required this.lastSeenAt,
+    this.count = 1,
+    this.rssi = 0,
+  });
+
+  Encounter copyWith({
+    String? id,
+    String? peerId,
+    String? teaser,
+    DateTime? receivedAt,
+    String? dedupeKey,
+    DateTime? lastSeenAt,
+    int? count,
+    int? rssi,
+  }) {
+    return Encounter(
+      id: id ?? this.id,
+      peerId: peerId ?? this.peerId,
+      teaser: teaser ?? this.teaser,
+      receivedAt: receivedAt ?? this.receivedAt,
+      dedupeKey: dedupeKey ?? this.dedupeKey,
+      lastSeenAt: lastSeenAt ?? this.lastSeenAt,
+      count: count ?? this.count,
+      rssi: rssi ?? this.rssi,
+    );
+  }
+}
+
+class RequestLog {
+  final String id;
+  final String encounterId;
+  final RequestStatus status;
+  final DateTime requestedAt;
+  final DateTime? resolvedAt;
+  final String? body;
+  final String? error;
+
+  const RequestLog({
+    required this.id,
+    required this.encounterId,
+    required this.status,
+    required this.requestedAt,
+    this.resolvedAt,
+    this.body,
+    this.error,
+  });
+
+  RequestLog copyWith({
+    String? id,
+    String? encounterId,
+    RequestStatus? status,
+    DateTime? requestedAt,
+    DateTime? resolvedAt,
+    String? body,
+    String? error,
+  }) {
+    return RequestLog(
+      id: id ?? this.id,
+      encounterId: encounterId ?? this.encounterId,
+      status: status ?? this.status,
+      requestedAt: requestedAt ?? this.requestedAt,
+      resolvedAt: resolvedAt ?? this.resolvedAt,
+      body: body ?? this.body,
+      error: error ?? this.error,
+    );
+  }
+}

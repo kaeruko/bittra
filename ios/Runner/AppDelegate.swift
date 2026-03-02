@@ -1,0 +1,96 @@
+import Flutter
+import UIKit
+
+@main
+@objc class AppDelegate: FlutterAppDelegate, FlutterStreamHandler {
+  private var bleCoordinator: BLECoordinator?
+  private var eventSink: FlutterEventSink?
+
+  override func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+  ) -> Bool {
+    
+    let controller = window?.rootViewController as! FlutterViewController
+    let methodChannel = FlutterMethodChannel(name: "com.kaeruko.bittora/ble_control", binaryMessenger: controller.binaryMessenger)
+    let eventChannel = FlutterEventChannel(name: "com.kaeruko.bittora/ble_events", binaryMessenger: controller.binaryMessenger)
+    
+    // Initialize BLE Coordinator
+    bleCoordinator = BLECoordinator()
+    
+    // Setup Method Channel
+    methodChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
+      self?.handleMethodCall(call, result: result)
+    }
+    
+    // Setup Event Channel
+    eventChannel.setStreamHandler(self)
+    
+    // Wire up events from Coordinator to EventSink
+    wireUpEvents()
+
+    GeneratedPluginRegistrant.register(with: self)
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let ble = bleCoordinator else {
+      result(FlutterError(code: "UNAVAILABLE", message: "BLE Coordinator not initialized", details: nil))
+      return
+    }
+
+    switch call.method {
+    case "startVenueMode":
+      if let args = call.arguments as? [String: Any],
+         let teaser = args["teaser"] as? String,
+         let body = args["body"] as? String {
+        ble.setMyTeaser(teaser)
+        ble.setMyBody(body)
+        ble.startVenueMode()
+        result(nil)
+      } else {
+        result(FlutterError(code: "INVALID_ARGUMENTS", message: "teaser and body are required", details: nil))
+      }
+    case "stopVenueMode":
+      ble.stopVenueMode()
+      result(nil)
+    case "requestFullText":
+      if let args = call.arguments as? [String: Any],
+         let peerId = args["peerId"] as? String {
+        ble.requestBody(forPeerId: peerId)
+        result(nil)
+      } else {
+        result(FlutterError(code: "INVALID_ARGUMENTS", message: "peerId is required", details: nil))
+      }
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func wireUpEvents() {
+    bleCoordinator?.onEncounterEvent = { [weak self] eventMap in
+      self?.eventSink?(eventMap)
+    }
+    bleCoordinator?.onStatusEvent = { [weak self] eventMap in
+      self?.eventSink?(eventMap)
+    }
+    bleCoordinator?.onBodyEvent = { [weak self] eventMap in
+      self?.eventSink?(eventMap)
+    }
+    bleCoordinator?.onLogEvent = { [weak self] eventMap in
+      self?.eventSink?(eventMap)
+    }
+  }
+
+  // MARK: - FlutterStreamHandler
+
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    self.eventSink = events
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    self.eventSink = nil
+    return nil
+  }
+}
