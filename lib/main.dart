@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bittora/router/app_router.dart';
+import 'package:bittora/services/ble_service.dart';
 
 void main() {
   runApp(
@@ -15,6 +16,9 @@ class BittoraApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Initialize BLE Event Listener
+    ref.listen(bleServiceProvider, (_, __) {});
+
     final router = ref.watch(appRouterProvider);
 
     return MaterialApp.router(

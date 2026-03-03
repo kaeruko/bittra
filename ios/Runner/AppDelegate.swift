@@ -12,8 +12,8 @@ import UIKit
   ) -> Bool {
     
     let controller = window?.rootViewController as! FlutterViewController
-    let methodChannel = FlutterMethodChannel(name: "com.kaeruko.bittora/ble_control", binaryMessenger: controller.binaryMessenger)
-    let eventChannel = FlutterEventChannel(name: "com.kaeruko.bittora/ble_events", binaryMessenger: controller.binaryMessenger)
+    let methodChannel = FlutterMethodChannel(name: "bittra/ble", binaryMessenger: controller.binaryMessenger)
+    let eventChannel = FlutterEventChannel(name: "bittra/ble_events", binaryMessenger: controller.binaryMessenger)
     
     // Initialize BLE Coordinator
     bleCoordinator = BLECoordinator()
@@ -41,27 +41,28 @@ import UIKit
 
     switch call.method {
     case "startVenueMode":
-      if let args = call.arguments as? [String: Any],
-         let teaser = args["teaser"] as? String,
-         let body = args["body"] as? String {
-        ble.setMyTeaser(teaser)
-        ble.setMyBody(body)
-        ble.startVenueMode()
-        result(nil)
-      } else {
-        result(FlutterError(code: "INVALID_ARGUMENTS", message: "teaser and body are required", details: nil))
-      }
+      ble.startVenueMode()
+      result(nil)
+
     case "stopVenueMode":
       ble.stopVenueMode()
       result(nil)
-    case "requestFullText":
-      if let args = call.arguments as? [String: Any],
-         let peerId = args["peerId"] as? String {
-        ble.requestBody(forPeerId: peerId)
-        result(nil)
-      } else {
-        result(FlutterError(code: "INVALID_ARGUMENTS", message: "peerId is required", details: nil))
-      }
+
+    case "setTeaser":
+      let t = (call.arguments as? [String: Any])?["teaser"] as? String ?? ""
+      ble.setMyTeaser(t)
+      result(nil)
+
+    case "setBody":
+      let b = (call.arguments as? [String: Any])?["body"] as? String ?? ""
+      ble.setMyBody(b)
+      result(nil)
+
+    case "requestBody":
+      let id = (call.arguments as? [String: Any])?["peerId"] as? String ?? ""
+      ble.requestBody(forPeerId: id)
+      result(nil)
+
     default:
       result(FlutterMethodNotImplemented)
     }
