@@ -13,7 +13,7 @@ class RequestDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Request Full Text')),
+      appBar: AppBar(title: const Text('全文をリクエスト')),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -23,13 +23,13 @@ class RequestDialog extends ConsumerWidget {
               const Icon(Icons.download_rounded, size: 64, color: Colors.blue),
               const SizedBox(height: 24),
               if (encounter != null) Text(
-                'Request full text for "${encounter!.teaser}"?',
+                '「${encounter!.teaser}」の全文をリクエストしますか？',
                 style: Theme.of(context).textTheme.headlineSmall,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
               const Text(
-                'This will attempt to connect to the sender via BLE and download the full text.',
+                'BLE経由で送信者に接続し、全文をダウンロードします。',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
@@ -38,7 +38,7 @@ class RequestDialog extends ConsumerWidget {
                 children: [
                   OutlinedButton(
                     onPressed: () => context.pop(),
-                    child: const Text('Cancel'),
+                    child: const Text('キャンセル'),
                   ),
                   FilledButton(
                     onPressed: () {
@@ -55,10 +55,10 @@ class RequestDialog extends ConsumerWidget {
                       // Call Native BLE
                       ref.read(bleServiceProvider).requestFullText(encounter!.peerId);
                       
-                      // Navigate to history 
-                      context.pushReplacement('/history');
+                      // Navigate to detail screen to see the loading state
+                      context.pushReplacement('/detail/${encounter!.peerId}');
                     },
-                    child: const Text('Request'),
+                    child: const Text('リクエスト'),
                   ),
                 ],
               ),

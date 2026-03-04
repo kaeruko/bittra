@@ -1,5 +1,6 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../models/bluetooth_models.dart';
+import '../services/ble_service.dart';
 
 part 'mock_data_provider.g.dart';
 
@@ -96,18 +97,54 @@ class MockSettings extends _$MockSettings {
   @override
   Map<String, bool> build() {
     return {
-      'venueMode': false,
       'powerSave': false,
     };
-  }
-
-  void toggleVenueMode() {
-    final current = state['venueMode'] ?? false;
-    state = {...state, 'venueMode': !current};
   }
 
   void togglePowerSave() {
     final current = state['powerSave'] ?? false;
     state = {...state, 'powerSave': !current};
+  }
+}
+
+class VenueState {
+  final bool isBroadcasting;
+  final String? teaser;
+  final String? body;
+
+  const VenueState({
+    required this.isBroadcasting,
+    this.teaser,
+    this.body,
+  });
+
+  VenueState copyWith({
+    bool? isBroadcasting,
+    String? teaser,
+    String? body,
+  }) {
+    return VenueState(
+      isBroadcasting: isBroadcasting ?? this.isBroadcasting,
+      teaser: teaser ?? this.teaser,
+      body: body ?? this.body,
+    );
+  }
+}
+
+@riverpod
+class ActiveVenue extends _$ActiveVenue {
+  @override
+  VenueState build() {
+    return const VenueState(isBroadcasting: false);
+  }
+
+  void start(String teaser, String body) {
+    state = VenueState(isBroadcasting: true, teaser: teaser, body: body);
+    ref.read(bleServiceProvider).startVenueMode(teaser, body);
+  }
+
+  void stop() {
+    state = state.copyWith(isBroadcasting: false);
+    ref.read(bleServiceProvider).stopVenueMode();
   }
 }

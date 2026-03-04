@@ -13,9 +13,9 @@ class HistoryScreen extends ConsumerWidget {
     final logs = ref.watch(mockRequestLogsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Request History')),
+      appBar: AppBar(title: const Text('リクエスト履歴')),
       body: logs.isEmpty
-          ? const Center(child: Text('No request history.'))
+          ? const Center(child: Text('履歴がありません。'))
           : ListView.builder(
               itemCount: logs.length,
               itemBuilder: (context, index) {
@@ -59,8 +59,8 @@ class RequestLogTile extends StatelessWidget {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Requested: ${format.format(log.requestedAt)}'),
-          if (log.error != null) Text('Error: ${log.error}', style: const TextStyle(color: Colors.red)),
+          Text('リクエスト日時: ${format.format(log.requestedAt)}'),
+          if (log.error != null) Text('エラー: ${log.error}', style: const TextStyle(color: Colors.red)),
         ],
       ),
       trailing: log.status == RequestStatus.received

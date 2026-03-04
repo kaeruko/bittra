@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../providers/mock_data_provider.dart';
-import '../services/ble_service.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -9,28 +9,31 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(mockSettingsProvider);
+    final activeVenue = ref.watch(activeVenueProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const Text('設定')),
       body: ListView(
         children: [
           SwitchListTile(
-            title: const Text('Venue Mode'),
-            subtitle: const Text('Enable Bluetooth advertising and scanning'),
-            value: settings['venueMode'] ?? false,
+            title: const Text('送受信を有効にする'),
+            subtitle: const Text('Bluetoothでの送受信を有効にします'),
+            value: activeVenue.isBroadcasting,
             onChanged: (val) {
-              ref.read(mockSettingsProvider.notifier).toggleVenueMode();
               if (val) {
-                // To fetch teaser/body, we might need a distinct provider or just hardcode for MVP settings click
-                ref.read(bleServiceProvider).startVenueMode('Teaser', 'Body text');
+                if (activeVenue.teaser != null && activeVenue.teaser!.isNotEmpty) {
+                  ref.read(activeVenueProvider.notifier).start(activeVenue.teaser!, activeVenue.body ?? '');
+                } else {
+                  context.push('/compose');
+                }
               } else {
-                ref.read(bleServiceProvider).stopVenueMode();
+                ref.read(activeVenueProvider.notifier).stop();
               }
             },
           ),
           SwitchListTile(
-            title: const Text('Power Save Mode'),
-            subtitle: const Text('Reduce scanning frequency to save battery'),
+            title: const Text('節電モード'),
+            subtitle: const Text('履歴を見るときなど'),
             value: settings['powerSave'] ?? false,
             onChanged: (val) {
               ref.read(mockSettingsProvider.notifier).togglePowerSave();
@@ -39,26 +42,26 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(),
           ListTile(
             leading: const Icon(Icons.delete_forever, color: Colors.red),
-            title: const Text('Clear All History', style: TextStyle(color: Colors.red)),
+            title: const Text('履歴をすべて削除', style: TextStyle(color: Colors.red)),
             onTap: () {
               showDialog(
                 context: context,
                 builder: (context) => AlertDialog(
-                  title: const Text('Clear History'),
-                  content: const Text('Are you sure you want to delete all encounter and request history?'),
+                  title: const Text('履歴の削除'),
+                  content: const Text('すべての履歴を削除してもよろしいですか？'),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
+                      child: const Text('キャンセル'),
                     ),
                     TextButton(
                       onPressed: () {
                         Navigator.of(context).pop();
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('History cleared (mock)')),
+                          const SnackBar(content: Text('履歴を削除しました（モック）')),
                         );
                       },
-                      child: const Text('Clear', style: TextStyle(color: Colors.red)),
+                      child: const Text('削除', style: TextStyle(color: Colors.red)),
                     ),
                   ],
                 ),

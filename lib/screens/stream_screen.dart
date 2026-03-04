@@ -11,10 +11,11 @@ class StreamScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final encounters = ref.watch(mockEncountersProvider);
+    final activeVenue = ref.watch(activeVenueProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bittora - Stream'),
+        title: const Text('Bittora'),
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
@@ -26,18 +27,50 @@ class StreamScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: encounters.isEmpty
-          ? const Center(child: Text('No encounters yet.'))
-          : ListView.builder(
-              itemCount: encounters.length,
-              itemBuilder: (context, index) {
-                final encounter = encounters[index];
-                return EncounterCard(encounter: encounter);
-              },
+      body: Column(
+        children: [
+          if (activeVenue.isBroadcasting)
+            Container(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.podcasts, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('送信中', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('おしらせ: ${activeVenue.teaser ?? ""}'),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      ref.read(activeVenueProvider.notifier).stop();
+                    },
+                    child: const Text('停止', style: TextStyle(color: Colors.red)),
+                  ),
+                ],
+              ),
             ),
+          Expanded(
+            child: encounters.isEmpty
+                ? const Center(child: Text('からっぽ'))
+                : ListView.builder(
+                    itemCount: encounters.length,
+                    itemBuilder: (context, index) {
+                      final encounter = encounters[index];
+                      return EncounterCard(encounter: encounter);
+                    },
+                  ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push('/compose'),
-        tooltip: 'Post new teaser',
+        tooltip: '新しいメッセージを投稿',
         child: const Icon(Icons.edit),
       ),
     );
@@ -65,7 +98,7 @@ class EncounterCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${encounter.count} times',
+                    '${encounter.count} 回受信',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.bold,

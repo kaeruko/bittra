@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../providers/mock_data_provider.dart';
 
 class ComposeScreen extends ConsumerStatefulWidget {
   const ComposeScreen({super.key});
@@ -23,9 +24,13 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
 
   void _submit() {
     if (_formKey.currentState!.validate()) {
-      // For now, just show a snackbar and pop
+      final teaser = _teaserController.text;
+      final body = _bodyController.text;
+      
+      ref.read(activeVenueProvider.notifier).start(teaser, body);
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Starting BLE advertising with this message!')),
+        const SnackBar(content: Text('おしらせを流しました')),
       );
       context.pop();
     }
@@ -34,7 +39,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Post to Venue')),
+      appBar: AppBar(title: const Text('おしらせする')),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -43,18 +48,18 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
             TextFormField(
               controller: _teaserController,
               decoration: const InputDecoration(
-                labelText: 'Teaser (Required)',
-                hintText: 'Max 8 characters',
+                labelText: 'おしらせ',
+                hintText: '8文字まで',
                 border: OutlineInputBorder(),
-                helperText: 'Broadcasted to everyone nearby',
+                helperText: 'びっとらを持ってる周りの人に届きます',
               ),
               maxLength: 8,
               validator: (value) {
                 if (value == null || value.isEmpty) {
-                  return 'Please enter a teaser';
+                  return 'おしらせを入力してください';
                 }
                 if (value.length > 8) {
-                  return 'Teaser must be 8 characters or less';
+                  return 'おしらせは8文字以内で入力してください';
                 }
                 return null;
               },
@@ -63,17 +68,17 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
             TextFormField(
               controller: _bodyController,
               decoration: const InputDecoration(
-                labelText: 'Full Text (Optional)',
-                hintText: 'Max 300 characters',
+                labelText: '詳しい内容',
+                hintText: '300文字まで',
                 border: OutlineInputBorder(),
-                helperText: 'Sent only when someone requests it',
+                helperText: 'リクエストされると送信されます',
                 alignLabelWithHint: true,
               ),
               maxLength: 300,
               maxLines: 8,
               validator: (value) {
                 if (value != null && value.length > 300) {
-                  return 'Full text must be 300 characters or less';
+                  return '本文は300文字以内で入力してください';
                 }
                 return null;
               },
@@ -82,7 +87,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
             FilledButton.icon(
               onPressed: _submit,
               icon: const Icon(Icons.podcasts),
-              label: const Text('Broadcast to Venue'),
+              label: const Text('おしらせ！'),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
