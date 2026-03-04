@@ -1,0 +1,38 @@
+--- /Users/yokota/work/bittra/ios/Runner/BLEPeripheral.swift
++++ /Users/yokota/work/bittra/ios/Runner/BLEPeripheral.swift
+@@ -19,6 +19,7 @@
+   private var pendingNotifyPackets: [Data] = []
+   private var isNotifying: Bool = false
+ 
++  private var shouldStartWhenPoweredOn: Bool = false
++
+   init(log: @escaping (String, String) -> Void) {
+     self.log = log
+     super.init()
+@@ -31,6 +32,7 @@
+ 
+   func start() {
+     guard pm.state == .poweredOn else {
++      shouldStartWhenPoweredOn = true
+       log("PERIPH", "Bluetooth not poweredOn yet")
+       return
+     }
+@@ -39,6 +41,7 @@
+   }
+ 
+   func stop() {
++    shouldStartWhenPoweredOn = false
+     pm.stopAdvertising()
+     log("PERIPH", "stopAdvertising")
+   }
+@@ -83,6 +86,10 @@
+ 
+   func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
+     log("PERIPH", "state=\(peripheral.state.rawValue)")
++    if peripheral.state == .poweredOn && shouldStartWhenPoweredOn {
++      log("PERIPH", "Bluetooth is now poweredOn, starting delayed broadcast")
++      start()
++    }
+   }
+ 
+   func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {

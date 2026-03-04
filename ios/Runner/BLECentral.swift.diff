@@ -1,0 +1,38 @@
+--- /Users/yokota/work/bittra/ios/Runner/BLECentral.swift
++++ /Users/yokota/work/bittra/ios/Runner/BLECentral.swift
+@@ -35,6 +35,8 @@
+   private var timeoutTimer: DispatchSourceTimer?
+   private var retryLeft: Int = 1
+ 
++  private var shouldScanWhenPoweredOn: Bool = false
++
+   init(log: @escaping (String, String) -> Void) {
+     self.log = log
+     super.init()
+@@ -43,6 +45,7 @@
+ 
+   func startScan() {
+     guard cm.state == .poweredOn else {
++      shouldScanWhenPoweredOn = true
+       log("CENTRAL", "Bluetooth not poweredOn yet")
+       return
+     }
+@@ -53,6 +56,7 @@
+   }
+ 
+   func stopScan() {
++    shouldScanWhenPoweredOn = false
+     cm.stopScan()
+     log("SCAN", "stopScan")
+   }
+@@ -120,6 +124,10 @@
+ 
+   func centralManagerDidUpdateState(_ central: CBCentralManager) {
+     log("CENTRAL", "state=\(central.state.rawValue)")
++    if central.state == .poweredOn && shouldScanWhenPoweredOn {
++      log("CENTRAL", "Bluetooth is now poweredOn, starting delayed scan")
++      startScan()
++    }
+   }
+ 
+   func centralManager(_ central: CBCentralManager,

@@ -16,6 +16,7 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
   // 送信キュー
   private var pendingNotifyPackets: [Data] = []
   private var isNotifying: Bool = false
+  private var shouldStartWhenPoweredOn: Bool = false
 
   init(log: @escaping (String, String) -> Void) {
     self.log = log
@@ -30,6 +31,7 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
 
   func start() {
     guard pm.state == .poweredOn else {
+      shouldStartWhenPoweredOn = true
       log("PERIPH", "Bluetooth not poweredOn yet")
       return
     }
@@ -38,6 +40,7 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
   }
 
   func stop() {
+    shouldStartWhenPoweredOn = false
     pm.stopAdvertising()
     log("PERIPH", "stopAdvertising")
   }
@@ -70,10 +73,11 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
   private func startAdvertising() {
     let nonce = UInt16.random(in: 0...UInt16.max)
     let payload = PayloadCodec.encodeAdvert(teaser: myTeaser, nonce: nonce)
+    let payloadString = payload.base64EncodedString()
 
     pm.startAdvertising([
       CBAdvertisementDataServiceUUIDsKey: [GATTProfile.serviceUUID],
-      CBAdvertisementDataServiceDataKey: [GATTProfile.serviceUUID: payload]
+      CBAdvertisementDataLocalNameKey: payloadString
     ])
     log("ADV", "startAdvertising teaser=\(PayloadCodec.normalizeTeaser(myTeaser)) bytes=\(payload.count)")
   }
@@ -82,6 +86,11 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
 
   func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
     log("PERIPH", "state=\(peripheral.state.rawValue)")
+    if peripheral.state == .poweredOn && shouldStartWhenPoweredOn {
+      log("PERIPH", "Bluetooth is now poweredOn, starting delayed broadcast")
+      shouldStartWhenPoweredOn = false
+      start()
+    }
   }
 
   func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {

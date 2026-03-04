@@ -8,7 +8,7 @@ enum PayloadCodec {
 
     // 2) 制御文字を除去
     s.removeAll { ch in
-      ch.unicodeScalars.contains { $0.properties.isControl }
+      ch.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
     }
 
     // 3) NFC

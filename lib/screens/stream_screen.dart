@@ -17,6 +17,10 @@ class StreamScreen extends ConsumerWidget {
         title: const Text('Bittora - Stream'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.history),
+            onPressed: () => context.push('/history'),
+          ),
+          IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => context.push('/settings'),
           ),

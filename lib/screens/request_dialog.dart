@@ -56,7 +56,7 @@ class RequestDialog extends ConsumerWidget {
                       ref.read(bleServiceProvider).requestFullText(encounter!.peerId);
                       
                       // Navigate to history 
-                      context.go('/history');
+                      context.pushReplacement('/history');
                     },
                     child: const Text('Request'),
                   ),
