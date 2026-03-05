@@ -1,6 +1,7 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../models/bluetooth_models.dart';
 import '../services/ble_service.dart';
+import '../services/database_service.dart';
 
 part 'mock_data_provider.g.dart';
 
@@ -8,30 +9,34 @@ part 'mock_data_provider.g.dart';
 class MockEncounters extends _$MockEncounters {
   @override
   List<Encounter> build() {
+    _loadFromDb();
     return [];
+  }
+
+  Future<void> _loadFromDb() async {
+    final encounters = await databaseServiceProvider.loadEncounters();
+    state = encounters;
   }
 
   void upsertEncounter({required String peerId, required String teaser, required int rssi}) {
     final dedupeKey = '$peerId|$teaser';
     final now = DateTime.now();
-    
+
     final existingIndex = state.indexWhere((e) => e.dedupeKey == dedupeKey);
     if (existingIndex >= 0) {
       final existing = state[existingIndex];
       final updated = existing.copyWith(
         count: existing.count + 1,
         lastSeenAt: now,
-        // Optional: you can update rssi if needed
       );
       final newState = List<Encounter>.from(state);
       newState[existingIndex] = updated;
-      
-      // Sort to bring most recently seen to the top
       newState.sort((a, b) => b.lastSeenAt.compareTo(a.lastSeenAt));
       state = newState;
+      databaseServiceProvider.upsertEncounter(updated);
     } else {
       final newEnc = Encounter(
-        id: peerId, // using peerId as ID for simplicity
+        id: peerId,
         peerId: peerId,
         teaser: teaser,
         receivedAt: now,
@@ -40,11 +45,13 @@ class MockEncounters extends _$MockEncounters {
         count: 1,
       );
       state = [newEnc, ...state];
+      databaseServiceProvider.upsertEncounter(newEnc);
     }
   }
 
   void addEncounter(Encounter enc) {
     state = [enc, ...state];
+    databaseServiceProvider.upsertEncounter(enc);
   }
 }
 
@@ -52,33 +59,39 @@ class MockEncounters extends _$MockEncounters {
 class MockRequestLogs extends _$MockRequestLogs {
   @override
   List<RequestLog> build() {
+    _loadFromDb();
     return [];
   }
 
+  Future<void> _loadFromDb() async {
+    final logs = await databaseServiceProvider.loadRequestLogs();
+    state = logs;
+  }
+
   void addRequest(RequestLog log) {
-    // Prevent duplicates
     if (!state.any((e) => e.id == log.id)) {
       state = [log, ...state];
+      databaseServiceProvider.upsertRequestLog(log);
     }
   }
 
   void updateRequest(String encounterId, RequestStatus status, {String? body, String? error}) {
-    // If request doesn't exist yet, create it. Usually happens if native triggers an update without frontend asking first or if we use peerId as encounterId
     final existingIndex = state.indexWhere((e) => e.encounterId == encounterId);
     if (existingIndex >= 0) {
       final newState = List<RequestLog>.from(state);
       final req = newState[existingIndex];
-      newState[existingIndex] = req.copyWith(
+      final updated = req.copyWith(
         status: status,
         resolvedAt: (status == RequestStatus.received || status == RequestStatus.failed || status == RequestStatus.timeout) ? DateTime.now() : null,
         body: body ?? req.body,
         error: error ?? req.error,
       );
+      newState[existingIndex] = updated;
       state = newState;
+      databaseServiceProvider.upsertRequestLog(updated);
     } else {
-      // Create new
       final req = RequestLog(
-        id: encounterId, // simplified
+        id: encounterId,
         encounterId: encounterId,
         status: status,
         requestedAt: DateTime.now(),
@@ -86,7 +99,8 @@ class MockRequestLogs extends _$MockRequestLogs {
         body: body,
         error: error,
       );
-       state = [req, ...state];
+      state = [req, ...state];
+      databaseServiceProvider.upsertRequestLog(req);
     }
   }
 }
@@ -141,6 +155,11 @@ class ActiveVenue extends _$ActiveVenue {
   void start(String teaser, String body) {
     state = VenueState(isBroadcasting: true, teaser: teaser, body: body);
     ref.read(bleServiceProvider).startVenueMode(teaser, body);
+  }
+
+  void startReceiveOnly() {
+    state = state.copyWith(isBroadcasting: true);
+    ref.read(bleServiceProvider).startReceiveOnly();
   }
 
   void stop() {

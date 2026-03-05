@@ -10,7 +10,13 @@ class StreamScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final encounters = ref.watch(mockEncountersProvider);
+    final allEncounters = ref.watch(mockEncountersProvider);
+    final requestLogs = ref.watch(mockRequestLogsProvider);
+    final receivedIds = requestLogs
+        .where((r) => r.status == RequestStatus.received)
+        .map((r) => r.encounterId)
+        .toSet();
+    final encounters = allEncounters.where((e) => !receivedIds.contains(e.id)).toList();
     final activeVenue = ref.watch(activeVenueProvider);
 
     return Scaffold(
@@ -29,7 +35,7 @@ class StreamScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          if (activeVenue.isBroadcasting)
+          if (activeVenue.isBroadcasting && activeVenue.teaser != null && activeVenue.teaser!.isNotEmpty)
             Container(
               color: Theme.of(context).colorScheme.primaryContainer,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

@@ -106,6 +106,14 @@ class BleService {
     }
   }
 
+  Future<void> startReceiveOnly() async {
+    try {
+      await BleBridge.startVenueMode();
+    } on PlatformException catch (e) {
+      log('Failed to start receive-only mode: ${e.message}');
+    }
+  }
+
   Future<void> stopVenueMode() async {
     try {
       await BleBridge.stopVenueMode();

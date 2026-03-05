@@ -11,67 +11,76 @@ class HistoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final logs = ref.watch(mockRequestLogsProvider);
+    final encounters = ref.watch(mockEncountersProvider);
+    final receivedLogs = logs.where((l) => l.status == RequestStatus.received).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('リクエスト履歴')),
-      body: logs.isEmpty
-          ? const Center(child: Text('履歴がありません。'))
+      appBar: AppBar(title: const Text('受信履歴')),
+      body: receivedLogs.isEmpty
+          ? const Center(child: Text('受信済みのお知らせはありません。'))
           : ListView.builder(
-              itemCount: logs.length,
+              itemCount: receivedLogs.length,
               itemBuilder: (context, index) {
-                final log = logs[index];
-                return RequestLogTile(log: log);
+                final log = receivedLogs[index];
+                final encounter = encounters.where((e) => e.id == log.encounterId).firstOrNull;
+                return ReceivedNoticeTile(log: log, teaser: encounter?.teaser);
               },
             ),
     );
   }
 }
 
-class RequestLogTile extends StatelessWidget {
+class ReceivedNoticeTile extends StatelessWidget {
   final RequestLog log;
-  const RequestLogTile({super.key, required this.log});
+  final String? teaser;
+  const ReceivedNoticeTile({super.key, required this.log, this.teaser});
 
   @override
   Widget build(BuildContext context) {
-    final format = DateFormat('MM/dd HH:mm:ss');
-    
-    IconData statusIcon;
-    Color statusColor;
-    switch (log.status) {
-      case RequestStatus.requested:
-        statusIcon = Icons.hourglass_empty;
-        statusColor = Colors.orange;
-        break;
-      case RequestStatus.received:
-        statusIcon = Icons.check_circle;
-        statusColor = Colors.green;
-        break;
-      case RequestStatus.failed:
-      case RequestStatus.timeout:
-        statusIcon = Icons.error_outline;
-        statusColor = Colors.red;
-        break;
-    }
+    final format = DateFormat('MM/dd HH:mm');
+    final bodyPreview = log.body != null && log.body!.isNotEmpty
+        ? log.body!.replaceAll('\n', ' ')
+        : null;
 
-    return ListTile(
-      leading: Icon(statusIcon, color: statusColor),
-      title: Text('Encounter: ${log.encounterId}'),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('リクエスト日時: ${format.format(log.requestedAt)}'),
-          if (log.error != null) Text('エラー: ${log.error}', style: const TextStyle(color: Colors.red)),
-        ],
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      elevation: 1,
+      child: InkWell(
+        onTap: () => context.push('/detail/${log.encounterId}'),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                  Text(
+                    format.format(log.resolvedAt ?? log.requestedAt),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (teaser != null)
+                Text(
+                  teaser!,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              if (bodyPreview != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  bodyPreview,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
-      trailing: log.status == RequestStatus.received
-          ? IconButton(
-              icon: const Icon(Icons.arrow_forward_ios, size: 16),
-              onPressed: () => context.push('/detail/${log.encounterId}'),
-            )
-          : null,
-      onTap: log.status == RequestStatus.received
-          ? () => context.push('/detail/${log.encounterId}')
-          : null,
     );
   }
 }

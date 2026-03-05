@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/mock_data_provider.dart';
+import '../services/database_service.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -24,7 +25,8 @@ class SettingsScreen extends ConsumerWidget {
                 if (activeVenue.teaser != null && activeVenue.teaser!.isNotEmpty) {
                   ref.read(activeVenueProvider.notifier).start(activeVenue.teaser!, activeVenue.body ?? '');
                 } else {
-                  context.push('/compose');
+                  ref.read(activeVenueProvider.notifier).startReceiveOnly();
+                  context.go('/');
                 }
               } else {
                 ref.read(activeVenueProvider.notifier).stop();
@@ -55,11 +57,16 @@ class SettingsScreen extends ConsumerWidget {
                       child: const Text('キャンセル'),
                     ),
                     TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('履歴を削除しました（モック）')),
-                        );
+                      onPressed: () async {
+                        await databaseServiceProvider.deleteAll();
+                        ref.invalidate(mockRequestLogsProvider);
+                        ref.invalidate(mockEncountersProvider);
+                        if (context.mounted) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('履歴を削除しました')),
+                          );
+                        }
                       },
                       child: const Text('削除', style: TextStyle(color: Colors.red)),
                     ),
