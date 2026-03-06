@@ -86,9 +86,9 @@ class BleService {
         break;
 
       case 'log':
-        // final tag = event['tag'] as String;
-        // final message = event['msg'] as String;
-        // Here we can append logs to a specific logs provider if needed for the UI.
+        final tag = event['tag'] as String? ?? '';
+        final message = event['message'] as String? ?? '';
+        log('[$tag] $message');
         break;
 
       default:

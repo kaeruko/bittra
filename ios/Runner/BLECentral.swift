@@ -133,8 +133,8 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
                       didDiscover peripheral: CBPeripheral,
                       advertisementData: [String : Any],
                       rssi RSSI: NSNumber) {
-    guard let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String,
-          let payload = Data(base64Encoded: localName),
+    guard let serviceDataDict = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data],
+          let payload = serviceDataDict[GATTProfile.serviceUUID],
           let decoded = PayloadCodec.decodeAdvert(payload) else { return }
 
     onEncounter?(peripheral, decoded.teaser, RSSI.intValue)

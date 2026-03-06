@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter devices:*)",
+      "Bash(adb devices:*)",
+      "Read(//Users/yokota/Library/Android/sdk/platform-tools/**)",
+      "Read(//usr/local/**)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb devices:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb:*)",
+      "Bash(flutter run:*)"
+    ]
+  }
+}
