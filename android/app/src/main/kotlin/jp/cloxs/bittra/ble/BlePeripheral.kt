@@ -1,4 +1,4 @@
-package com.kaeruko.bittora.ble
+package jp.cloxs.bittra.ble
 
 import android.annotation.SuppressLint
 import android.bluetooth.*

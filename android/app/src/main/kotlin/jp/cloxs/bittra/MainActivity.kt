@@ -1,4 +1,4 @@
-package com.kaeruko.bittora
+package jp.cloxs.bittra
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -6,7 +6,7 @@ import android.os.Build
 import androidx.annotation.NonNull
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.kaeruko.bittora.ble.BleCoordinator
+import jp.cloxs.bittra.ble.BleCoordinator
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel

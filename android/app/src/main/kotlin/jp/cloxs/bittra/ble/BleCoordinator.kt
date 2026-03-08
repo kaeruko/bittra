@@ -1,4 +1,4 @@
-package com.kaeruko.bittora.ble
+package jp.cloxs.bittra.ble
 
 import android.bluetooth.BluetoothDevice
 import android.content.Context
