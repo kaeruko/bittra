@@ -32,7 +32,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('おしらせを流しました')));
-      context.pop();
+      context.go('/');
     }
   }
 

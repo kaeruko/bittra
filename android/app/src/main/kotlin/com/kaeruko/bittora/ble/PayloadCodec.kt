@@ -63,9 +63,8 @@ object PayloadCodec {
         val nonce = n0 or n1
         
         val len = data[4].toInt() and 0xFF
-        if (data.size < 5 + len) return null
-        
-        val teaser = String(data, 5, len, StandardCharsets.UTF_8)
+        val actualLen = Math.min(len, data.size - 5)
+        val teaser = String(data, 5, actualLen, StandardCharsets.UTF_8)
         
         return AdvertResult(nonce, teaser)
     }

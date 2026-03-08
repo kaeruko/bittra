@@ -16,8 +16,11 @@ class StreamScreen extends ConsumerWidget {
         .where((r) => r.status == RequestStatus.received)
         .map((r) => r.encounterId)
         .toSet();
+
+    final now = DateTime.now();
     final encounters = allEncounters
         .where((e) => !receivedIds.contains(e.id))
+        .where((e) => now.difference(e.lastSeenAt).inMinutes < 3)
         .toList();
     final activeVenue = ref.watch(activeVenueProvider);
 

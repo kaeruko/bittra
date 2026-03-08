@@ -50,17 +50,45 @@ class BleCentral(private val context: Context, private val log: (String, String)
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val record = result.scanRecord ?: return
 
-            // Android peripheral: payload in manufacturer specific data (skip 2-byte company ID)
-            // iOS peripheral: payload in localName (base64-encoded, CoreBluetooth limitation)
+            // Android peripheral: payload in manufacturer specific data
+            // iOS peripheral (foreground): payload often in service data
+            // iOS peripheral (background/fallback): payload in localName
             val mfgData = record.getManufacturerSpecificData(GATTProfile.MANUFACTURER_ID)
-            val payload: ByteArray = if (mfgData != null && mfgData.size > 0) {
+            val srvData = record.serviceData[ParcelUuid(GATTProfile.SERVICE_UUID)]
+            
+            // Log exactly what we see for debugging iOS discoveries
+            android.util.Log.d("BleCentral", "ScanResult for ${result.device.address}: name=${record.deviceName}, mfgData=${mfgData?.size}, srvData=${srvData?.size}, srvUuids=${record.serviceUuids}")
+
+            val payload: ByteArray? = if (mfgData != null && mfgData.isNotEmpty()) {
                 mfgData
+            } else if (srvData != null && srvData.isNotEmpty()) {
+                srvData
             } else {
-                val localName = record.deviceName ?: return
-                try {
-                    android.util.Base64.decode(localName, android.util.Base64.DEFAULT)
-                } catch (e: Exception) { return }
+                val localName = record.deviceName
+                if (localName != null) {
+                    var decodedData: ByteArray? = null
+                    var tempName: String = localName
+                    
+                    // CoreBluetooth cuts the device name strictly at byte limits, which often corrupts 
+                    // the last 1-3 characters of a Base64 string. We trim up to 4 characters from the end 
+                    // until we find a valid Base64 boundary.
+                    for (i in 0 until 4) {
+                        if (tempName.isEmpty()) break
+                        try {
+                            val padded = tempName.padEnd(tempName.length + (4 - tempName.length % 4) % 4, '=')
+                            decodedData = android.util.Base64.decode(padded, android.util.Base64.DEFAULT)
+                            break
+                        } catch (e: Exception) {
+                            tempName = tempName.substring(0, tempName.length - 1)
+                        }
+                    }
+                    decodedData
+                } else {
+                    null
+                }
             }
+            
+            if (payload == null) return
 
             val decoded = PayloadCodec.decodeAdvert(payload) ?: return
             onEncounter?.invoke(result.device, decoded.teaser, result.rssi)
