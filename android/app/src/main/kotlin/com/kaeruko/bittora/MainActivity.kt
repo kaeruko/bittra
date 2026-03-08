@@ -13,8 +13,8 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val METHOD_CHANNEL = "com.kaeruko.bittora/ble_control"
-    private val EVENT_CHANNEL = "com.kaeruko.bittora/ble_events"
+    private val METHOD_CHANNEL = "bittra/ble"
+    private val EVENT_CHANNEL = "bittra/ble_events"
 
     private var bleCoordinator: BleCoordinator? = null
     private var eventSink: EventChannel.EventSink? = null
@@ -35,22 +35,32 @@ class MainActivity : FlutterActivity() {
 
             when (call.method) {
                 "startVenueMode" -> {
-                    val teaser = call.argument<String>("teaser")
-                    val body = call.argument<String>("body")
-                    if (teaser != null && body != null) {
-                        ble.setMyTeaser(teaser)
-                        ble.setMyBody(body)
-                        ble.startVenueMode()
-                        result.success(null)
-                    } else {
-                        result.error("INVALID_ARGUMENTS", "teaser and body are required", null)
-                    }
+                    ble.startVenueMode()
+                    result.success(null)
                 }
                 "stopVenueMode" -> {
                     ble.stopVenueMode()
                     result.success(null)
                 }
-                "requestFullText" -> {
+                "setTeaser" -> {
+                    val teaser = call.argument<String>("teaser")
+                    if (teaser != null) {
+                        ble.setMyTeaser(teaser)
+                        result.success(null)
+                    } else {
+                        result.error("INVALID_ARGUMENTS", "teaser is required", null)
+                    }
+                }
+                "setBody" -> {
+                    val body = call.argument<String>("body")
+                    if (body != null) {
+                        ble.setMyBody(body)
+                        result.success(null)
+                    } else {
+                        result.error("INVALID_ARGUMENTS", "body is required", null)
+                    }
+                }
+                "requestBody" -> {
                     val peerId = call.argument<String>("peerId")
                     if (peerId != null) {
                         ble.requestBody(peerId)

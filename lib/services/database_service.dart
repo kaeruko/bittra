@@ -88,48 +88,48 @@ class DatabaseService {
   // --- Mappers ---
 
   Map<String, dynamic> _encounterToRow(Encounter e) => {
-        'id': e.id,
-        'peerId': e.peerId,
-        'teaser': e.teaser,
-        'receivedAt': e.receivedAt.millisecondsSinceEpoch,
-        'dedupeKey': e.dedupeKey,
-        'lastSeenAt': e.lastSeenAt.millisecondsSinceEpoch,
-        'count': e.count,
-        'rssi': e.rssi,
-      };
+    'id': e.id,
+    'peerId': e.peerId,
+    'teaser': e.teaser,
+    'receivedAt': e.receivedAt.millisecondsSinceEpoch,
+    'dedupeKey': e.dedupeKey,
+    'lastSeenAt': e.lastSeenAt.millisecondsSinceEpoch,
+    'count': e.count,
+    'rssi': e.rssi,
+  };
 
   Encounter _rowToEncounter(Map<String, dynamic> row) => Encounter(
-        id: row['id'] as String,
-        peerId: row['peerId'] as String,
-        teaser: row['teaser'] as String,
-        receivedAt: DateTime.fromMillisecondsSinceEpoch(row['receivedAt'] as int),
-        dedupeKey: row['dedupeKey'] as String,
-        lastSeenAt: DateTime.fromMillisecondsSinceEpoch(row['lastSeenAt'] as int),
-        count: row['count'] as int,
-        rssi: row['rssi'] as int,
-      );
+    id: row['id'] as String,
+    peerId: row['peerId'] as String,
+    teaser: row['teaser'] as String,
+    receivedAt: DateTime.fromMillisecondsSinceEpoch(row['receivedAt'] as int),
+    dedupeKey: row['dedupeKey'] as String,
+    lastSeenAt: DateTime.fromMillisecondsSinceEpoch(row['lastSeenAt'] as int),
+    count: row['count'] as int,
+    rssi: row['rssi'] as int,
+  );
 
   Map<String, dynamic> _requestLogToRow(RequestLog log) => {
-        'id': log.id,
-        'encounterId': log.encounterId,
-        'status': log.status.name,
-        'requestedAt': log.requestedAt.millisecondsSinceEpoch,
-        'resolvedAt': log.resolvedAt?.millisecondsSinceEpoch,
-        'body': log.body,
-        'error': log.error,
-      };
+    'id': log.id,
+    'encounterId': log.encounterId,
+    'status': log.status.name,
+    'requestedAt': log.requestedAt.millisecondsSinceEpoch,
+    'resolvedAt': log.resolvedAt?.millisecondsSinceEpoch,
+    'body': log.body,
+    'error': log.error,
+  };
 
   RequestLog _rowToRequestLog(Map<String, dynamic> row) => RequestLog(
-        id: row['id'] as String,
-        encounterId: row['encounterId'] as String,
-        status: RequestStatus.values.byName(row['status'] as String),
-        requestedAt: DateTime.fromMillisecondsSinceEpoch(row['requestedAt'] as int),
-        resolvedAt: row['resolvedAt'] != null
-            ? DateTime.fromMillisecondsSinceEpoch(row['resolvedAt'] as int)
-            : null,
-        body: row['body'] as String?,
-        error: row['error'] as String?,
-      );
+    id: row['id'] as String,
+    encounterId: row['encounterId'] as String,
+    status: RequestStatus.values.byName(row['status'] as String),
+    requestedAt: DateTime.fromMillisecondsSinceEpoch(row['requestedAt'] as int),
+    resolvedAt: row['resolvedAt'] != null
+        ? DateTime.fromMillisecondsSinceEpoch(row['resolvedAt'] as int)
+        : null,
+    body: row['body'] as String?,
+    error: row['error'] as String?,
+  );
 }
 
 final databaseServiceProvider = DatabaseService();

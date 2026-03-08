@@ -8,6 +8,7 @@ import '../screens/request_dialog.dart';
 import '../screens/detail_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/compose_screen.dart';
+import '../screens/main_scaffold.dart';
 import '../models/bluetooth_models.dart';
 
 part 'app_router.g.dart';
@@ -17,9 +18,21 @@ GoRouter appRouter(Ref ref) {
   return GoRouter(
     initialLocation: '/',
     routes: [
-      GoRoute(
-        path: '/',
-        builder: (context, state) => const StreamScreen(),
+      ShellRoute(
+        builder: (context, state, child) {
+          return MainScaffold(child: child);
+        },
+        routes: [
+          GoRoute(path: '/', builder: (context, state) => const StreamScreen()),
+          GoRoute(
+            path: '/history',
+            builder: (context, state) => const HistoryScreen(),
+          ),
+          GoRoute(
+            path: '/compose',
+            builder: (context, state) => const ComposeScreen(),
+          ),
+        ],
       ),
       GoRoute(
         path: '/settings',
@@ -41,14 +54,6 @@ GoRouter appRouter(Ref ref) {
           final id = state.pathParameters['id']!;
           return DetailScreen(encounterId: id);
         },
-      ),
-      GoRoute(
-        path: '/history',
-        builder: (context, state) => const HistoryScreen(),
-      ),
-      GoRoute(
-        path: '/compose',
-        builder: (context, state) => const ComposeScreen(),
       ),
     ],
   );

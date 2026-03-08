@@ -16,47 +16,72 @@ class StreamScreen extends ConsumerWidget {
         .where((r) => r.status == RequestStatus.received)
         .map((r) => r.encounterId)
         .toSet();
-    final encounters = allEncounters.where((e) => !receivedIds.contains(e.id)).toList();
+    final encounters = allEncounters
+        .where((e) => !receivedIds.contains(e.id))
+        .toList();
     final activeVenue = ref.watch(activeVenueProvider);
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC), // Very slight gray background
       appBar: AppBar(
-        title: const Text('Bittora'),
+        title: const Text(
+          'びっとら',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        backgroundColor: Colors.orange,
         actions: [
           IconButton(
-            icon: const Icon(Icons.history),
-            onPressed: () => context.push('/history'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.settings, color: Colors.white),
             onPressed: () => context.push('/settings'),
           ),
         ],
       ),
       body: Column(
         children: [
-          if (activeVenue.isBroadcasting && activeVenue.teaser != null && activeVenue.teaser!.isNotEmpty)
+          if (activeVenue.isBroadcasting &&
+              activeVenue.teaser != null &&
+              activeVenue.teaser!.isNotEmpty)
             Container(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Colors.orange.shade300,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
-                  const Icon(Icons.podcasts, color: Colors.blue),
+                  const Icon(
+                    Icons.satellite_alt,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('送信中', style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('おしらせ: ${activeVenue.teaser ?? ""}'),
-                      ],
+                  const Expanded(
+                    child: Text(
+                      '会場モード ON',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                  TextButton(
+                  ElevatedButton(
                     onPressed: () {
                       ref.read(activeVenueProvider.notifier).stop();
                     },
-                    child: const Text('停止', style: TextStyle(color: Colors.red)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.orange,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 0,
+                      ),
+                      minimumSize: const Size(0, 32),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'スキャン中',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ],
               ),
@@ -65,6 +90,7 @@ class StreamScreen extends ConsumerWidget {
             child: encounters.isEmpty
                 ? const Center(child: Text('からっぽ'))
                 : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: encounters.length,
                     itemBuilder: (context, index) {
                       final encounter = encounters[index];
@@ -74,11 +100,6 @@ class StreamScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/compose'),
-        tooltip: '新しいメッセージを投稿',
-        child: const Icon(Icons.edit),
-      ),
     );
   }
 }
@@ -87,50 +108,72 @@ class EncounterCard extends StatelessWidget {
   final Encounter encounter;
   const EncounterCard({super.key, required this.encounter});
 
+  String _getTimeAgo(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+    if (difference.inMinutes == 0) return 'いま';
+    if (difference.inHours == 0) return '${difference.inMinutes}分前';
+    if (difference.inDays == 0) return '${difference.inHours}時間前';
+    return '${difference.inDays}日前';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final format = DateFormat('HH:mm');
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      elevation: 1,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade300),
+      ),
+      color: Colors.white,
       child: InkWell(
         onTap: () => context.push('/request', extra: encounter),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '${encounter.count} 回受信',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      encounter.teaser,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  Text(
-                    format.format(encounter.receivedAt),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_getTimeAgo(encounter.receivedAt)}・×${encounter.count}',
+                      style: const TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                encounter.teaser,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                   Text(
-                    'ID: ${encounter.id}',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey),
+              const SizedBox(width: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                child: const Text(
+                  '全文',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
+                ),
               ),
             ],
           ),
@@ -139,4 +182,3 @@ class EncounterCard extends StatelessWidget {
     );
   }
 }
-

@@ -109,6 +109,12 @@ class BlePeripheral(private val context: Context, private val log: (String, Stri
             return
         }
 
+        // Stop existing advertisement before restarting with new content
+        if (isAdvertising) {
+            advertiser?.stopAdvertising(advertiseCallback)
+            isAdvertising = false
+        }
+
         setupGATTIfNeeded()
         startAdvertising()
     }
@@ -166,12 +172,19 @@ class BlePeripheral(private val context: Context, private val log: (String, Stri
         val nonce = (0..65535).random()
         val payload = PayloadCodec.encodeAdvert(myTeaser, nonce)
 
-        val data = AdvertiseData.Builder()
+        // Main packet: service UUID only (for iOS scan filter)
+        val advertiseData = AdvertiseData.Builder()
             .addServiceUuid(ParcelUuid(GATTProfile.SERVICE_UUID))
-            .addServiceData(ParcelUuid(GATTProfile.SERVICE_UUID), payload)
+            .setIncludeDeviceName(false)
             .build()
 
-        advertiser.startAdvertising(settings, data, advertiseCallback)
+        // Scan response: teaser payload in manufacturer data (4 bytes overhead vs 18 for service data)
+        val scanResponse = AdvertiseData.Builder()
+            .addManufacturerData(GATTProfile.MANUFACTURER_ID, payload)
+            .setIncludeDeviceName(false)
+            .build()
+
+        advertiser.startAdvertising(settings, advertiseData, scanResponse, advertiseCallback)
         log("ADV", "startAdvertising teaser=${PayloadCodec.normalizeTeaser(myTeaser)} bytes=${payload.size}")
     }
 

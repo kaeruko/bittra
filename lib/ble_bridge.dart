@@ -9,8 +9,7 @@ class BleBridge {
   static Future<void> startVenueMode() =>
       _channel.invokeMethod('startVenueMode');
 
-  static Future<void> stopVenueMode() =>
-      _channel.invokeMethod('stopVenueMode');
+  static Future<void> stopVenueMode() => _channel.invokeMethod('stopVenueMode');
 
   static Future<void> setTeaser(String teaser) =>
       _channel.invokeMethod('setTeaser', {'teaser': teaser});
@@ -24,7 +23,5 @@ class BleBridge {
   // --- イベント受信 ---
 
   static Stream<Map<String, dynamic>> get events =>
-      _events.receiveBroadcastStream().map(
-        (e) => Map<String, dynamic>.from(e),
-      );
+      _events.receiveBroadcastStream().map((e) => Map<String, dynamic>.from(e));
 }

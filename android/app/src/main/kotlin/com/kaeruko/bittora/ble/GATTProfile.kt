@@ -9,6 +9,8 @@ object GATTProfile {
     val CHUNK_CHAR_UUID: UUID = UUID.fromString("9E2A0003-4B5A-4F5E-9A9D-1B7A00000003")
 
     const val MAGIC: Int = 0x6274 // "bt"
-    const val MAX_TEASER_UTF8_BYTES = 18
+    // BLE scan response: 31 bytes - 4 bytes (1 len + 1 type + 2 company_id) - 5 bytes header = 22 bytes max
+    const val MAX_TEASER_UTF8_BYTES = 22
+    const val MANUFACTURER_ID = 0xFFFF // test/unregistered company ID
     const val PREVIEW_BYTES = 120
 }

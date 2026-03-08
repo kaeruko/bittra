@@ -133,10 +133,19 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
                       didDiscover peripheral: CBPeripheral,
                       advertisementData: [String : Any],
                       rssi RSSI: NSNumber) {
-    guard let serviceDataDict = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data],
-          let payload = serviceDataDict[GATTProfile.serviceUUID],
-          let decoded = PayloadCodec.decodeAdvert(payload) else { return }
+    // Android peripheral: payload in manufacturer specific data (skip 2-byte company ID)
+    // iOS peripheral: payload in localName (base64-encoded, CoreBluetooth limitation)
+    let payload: Data?
+    if let mfgData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data, mfgData.count > 2 {
+      payload = Data(mfgData.dropFirst(2))
+    } else if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String,
+              let data = Data(base64Encoded: localName) {
+      payload = data
+    } else {
+      return
+    }
 
+    guard let payload = payload, let decoded = PayloadCodec.decodeAdvert(payload) else { return }
     onEncounter?(peripheral, decoded.teaser, RSSI.intValue)
   }
 

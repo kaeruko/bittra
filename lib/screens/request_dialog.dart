@@ -22,11 +22,12 @@ class RequestDialog extends ConsumerWidget {
             children: [
               const Icon(Icons.download_rounded, size: 64, color: Colors.blue),
               const SizedBox(height: 24),
-              if (encounter != null) Text(
-                '「${encounter!.teaser}」の全文をリクエストしますか？',
-                style: Theme.of(context).textTheme.headlineSmall,
-                textAlign: TextAlign.center,
-              ),
+              if (encounter != null)
+                Text(
+                  '「${encounter!.teaser}」の全文をリクエストしますか？',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                  textAlign: TextAlign.center,
+                ),
               const SizedBox(height: 16),
               const Text(
                 'BLE経由で送信者に接続し、全文をダウンロードします。',
@@ -43,18 +44,22 @@ class RequestDialog extends ConsumerWidget {
                   FilledButton(
                     onPressed: () {
                       if (encounter == null) return;
-                      
+
                       final log = RequestLog(
                         id: encounter!.peerId,
                         encounterId: encounter!.peerId,
                         status: RequestStatus.requested,
                         requestedAt: DateTime.now(),
                       );
-                      ref.read(mockRequestLogsProvider.notifier).addRequest(log);
-                      
+                      ref
+                          .read(mockRequestLogsProvider.notifier)
+                          .addRequest(log);
+
                       // Call Native BLE
-                      ref.read(bleServiceProvider).requestFullText(encounter!.peerId);
-                      
+                      ref
+                          .read(bleServiceProvider)
+                          .requestFullText(encounter!.peerId);
+
                       // Navigate to detail screen to see the loading state
                       context.pushReplacement('/detail/${encounter!.peerId}');
                     },
@@ -69,5 +74,3 @@ class RequestDialog extends ConsumerWidget {
     );
   }
 }
-
-

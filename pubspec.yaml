@@ -38,6 +38,7 @@ dependencies:
   riverpod_annotation: any
   go_router: ^17.1.0
   sqflite: ^2.4.2
+  shared_preferences: ^2.3.5
   path_provider: ^2.1.5
   intl: ^0.20.2
   uuid: ^4.5.3

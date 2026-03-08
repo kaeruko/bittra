@@ -15,11 +15,14 @@ class BleService {
   }
 
   void _initEventChannel() {
-    BleBridge.events.listen((event) {
-      _handleNativeEvent(event);
-    }, onError: (error) {
-      log('BleService: Intercepted error from event channel: $error');
-    });
+    BleBridge.events.listen(
+      (event) {
+        _handleNativeEvent(event);
+      },
+      onError: (error) {
+        log('BleService: Intercepted error from event channel: $error');
+      },
+    );
   }
 
   void _handleNativeEvent(Map<String, dynamic> event) {
@@ -29,13 +32,11 @@ class BleService {
         final peerId = event['peerId'] as String;
         final teaser = event['teaser'] as String;
         final rssi = event['rssi'] as int;
-        
+
         // Push this data to the Provider (replacing mock with real logic eventually)
-        ref.read(mockEncountersProvider.notifier).upsertEncounter(
-              peerId: peerId,
-              teaser: teaser,
-              rssi: rssi,
-            );
+        ref
+            .read(mockEncountersProvider.notifier)
+            .upsertEncounter(peerId: peerId, teaser: teaser, rssi: rssi);
         break;
 
       case 'status':
@@ -64,24 +65,20 @@ class BleService {
         }
 
         // We use peerId (UUID of the peripheral) as the encounterId for mapping
-        ref.read(mockRequestLogsProvider.notifier).updateRequest(
-              peerId,
-              reqStatus,
-              error: error,
-            );
+        ref
+            .read(mockRequestLogsProvider.notifier)
+            .updateRequest(peerId, reqStatus, error: error);
         break;
 
       case 'body':
         final peerId = event['peerId'] as String;
-        final preview = event['preview'] as String?; 
+        final preview = event['preview'] as String?;
         final body = event['body'] as String?;
-        
+
         if (body != null) {
-          ref.read(mockRequestLogsProvider.notifier).updateRequest(
-                peerId,
-                RequestStatus.received,
-                body: body,
-              );
+          ref
+              .read(mockRequestLogsProvider.notifier)
+              .updateRequest(peerId, RequestStatus.received, body: body);
         }
         break;
 

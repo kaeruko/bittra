@@ -8,6 +8,8 @@ enum GATTProfile {
   static let chunkCharUUID = CBUUID(string: "9E2A0003-4B5A-4F5E-9A9D-1B7A00000003")
 
   static let magic: UInt16 = 0x6274 // "bt"
-  static let maxTeaserUTF8Bytes: Int = 18
+  // LocalName field: 31 bytes - 1 len - 1 type = 29 for base64 string
+  // base64(5 header + N teaser) <= 29 → N <= 16
+  static let maxTeaserUTF8Bytes: Int = 16
   static let previewBytes: Int = 120
 }

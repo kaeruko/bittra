@@ -1,9 +1,4 @@
-enum RequestStatus {
-  requested,
-  received,
-  failed,
-  timeout,
-}
+enum RequestStatus { requested, received, failed, timeout }
 
 class Encounter {
   final String id;

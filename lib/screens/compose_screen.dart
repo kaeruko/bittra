@@ -26,12 +26,12 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
     if (_formKey.currentState!.validate()) {
       final teaser = _teaserController.text;
       final body = _bodyController.text;
-      
+
       ref.read(activeVenueProvider.notifier).start(teaser, body);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('おしらせを流しました')),
-      );
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('おしらせを流しました')));
       context.pop();
     }
   }
@@ -39,7 +39,19 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('おしらせする')),
+      appBar: AppBar(
+        title: const Text('おしらせする'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/'),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => context.push('/settings'),
+          ),
+        ],
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -49,7 +61,6 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
               controller: _teaserController,
               decoration: const InputDecoration(
                 labelText: 'おしらせ',
-                hintText: '8文字まで',
                 border: OutlineInputBorder(),
                 helperText: 'びっとらを持ってる周りの人に届きます',
               ),
@@ -69,7 +80,6 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
               controller: _bodyController,
               decoration: const InputDecoration(
                 labelText: '詳しい内容',
-                hintText: '300文字まで',
                 border: OutlineInputBorder(),
                 helperText: 'リクエストされると送信されます',
                 alignLabelWithHint: true,
@@ -98,4 +108,3 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
     );
   }
 }
-

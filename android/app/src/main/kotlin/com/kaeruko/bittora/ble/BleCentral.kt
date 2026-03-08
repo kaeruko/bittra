@@ -49,8 +49,19 @@ class BleCentral(private val context: Context, private val log: (String, String)
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val record = result.scanRecord ?: return
-            val payload = record.serviceData[ParcelUuid(GATTProfile.SERVICE_UUID)] ?: return
-            
+
+            // Android peripheral: payload in manufacturer specific data (skip 2-byte company ID)
+            // iOS peripheral: payload in localName (base64-encoded, CoreBluetooth limitation)
+            val mfgData = record.getManufacturerSpecificData(GATTProfile.MANUFACTURER_ID)
+            val payload: ByteArray = if (mfgData != null && mfgData.size > 0) {
+                mfgData
+            } else {
+                val localName = record.deviceName ?: return
+                try {
+                    android.util.Base64.decode(localName, android.util.Base64.DEFAULT)
+                } catch (e: Exception) { return }
+            }
+
             val decoded = PayloadCodec.decodeAdvert(payload) ?: return
             onEncounter?.invoke(result.device, decoded.teaser, result.rssi)
         }
@@ -116,12 +127,22 @@ class BleCentral(private val context: Context, private val log: (String, String)
             }
         }
 
+        // API 33+ callback
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray
         ) {
             handleCharacteristicChanged(characteristic, value)
+        }
+
+        // API < 33 deprecated callback (Android 11 etc.)
+        @Suppress("DEPRECATION")
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            handleCharacteristicChanged(characteristic, characteristic.value ?: return)
         }
     }
 
@@ -198,7 +219,7 @@ class BleCentral(private val context: Context, private val log: (String, String)
         
         currentGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
         
-        startTimeout(3000)
+        startTimeout(10000)
         log("CENTRAL", "connect start ${device.address}")
     }
 

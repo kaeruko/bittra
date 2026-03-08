@@ -12,7 +12,9 @@ class HistoryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final logs = ref.watch(mockRequestLogsProvider);
     final encounters = ref.watch(mockEncountersProvider);
-    final receivedLogs = logs.where((l) => l.status == RequestStatus.received).toList();
+    final receivedLogs = logs
+        .where((l) => l.status == RequestStatus.received)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('受信履歴')),
@@ -22,7 +24,9 @@ class HistoryScreen extends ConsumerWidget {
               itemCount: receivedLogs.length,
               itemBuilder: (context, index) {
                 final log = receivedLogs[index];
-                final encounter = encounters.where((e) => e.id == log.encounterId).firstOrNull;
+                final encounter = encounters
+                    .where((e) => e.id == log.encounterId)
+                    .firstOrNull;
                 return ReceivedNoticeTile(log: log, teaser: encounter?.teaser);
               },
             ),
@@ -64,15 +68,14 @@ class ReceivedNoticeTile extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               if (teaser != null)
-                Text(
-                  teaser!,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text(teaser!, style: Theme.of(context).textTheme.titleMedium),
               if (bodyPreview != null) ...[
                 const SizedBox(height: 4),
                 Text(
                   bodyPreview,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -84,4 +87,3 @@ class ReceivedNoticeTile extends StatelessWidget {
     );
   }
 }
-

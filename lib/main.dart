@@ -4,11 +4,7 @@ import 'package:bittora/router/app_router.dart';
 import 'package:bittora/services/ble_service.dart';
 
 void main() {
-  runApp(
-    const ProviderScope(
-      child: BittoraApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: BittoraApp()));
 }
 
 class BittoraApp extends ConsumerWidget {
@@ -25,14 +21,14 @@ class BittoraApp extends ConsumerWidget {
       title: 'Bittora',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
+          seedColor: Colors.orange,
           brightness: Brightness.light,
         ),
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
+          seedColor: Colors.orange,
           brightness: Brightness.dark,
         ),
         useMaterial3: true,

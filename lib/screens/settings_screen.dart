@@ -22,8 +22,11 @@ class SettingsScreen extends ConsumerWidget {
             value: activeVenue.isBroadcasting,
             onChanged: (val) {
               if (val) {
-                if (activeVenue.teaser != null && activeVenue.teaser!.isNotEmpty) {
-                  ref.read(activeVenueProvider.notifier).start(activeVenue.teaser!, activeVenue.body ?? '');
+                if (activeVenue.teaser != null &&
+                    activeVenue.teaser!.isNotEmpty) {
+                  ref
+                      .read(activeVenueProvider.notifier)
+                      .start(activeVenue.teaser!, activeVenue.body ?? '');
                 } else {
                   ref.read(activeVenueProvider.notifier).startReceiveOnly();
                   context.go('/');
@@ -68,7 +71,10 @@ class SettingsScreen extends ConsumerWidget {
                           );
                         }
                       },
-                      child: const Text('削除', style: TextStyle(color: Colors.red)),
+                      child: const Text(
+                        '削除',
+                        style: TextStyle(color: Colors.red),
+                      ),
                     ),
                   ],
                 ),
@@ -80,4 +86,3 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 }
-
