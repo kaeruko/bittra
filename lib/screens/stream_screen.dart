@@ -12,14 +12,21 @@ class StreamScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final allEncounters = ref.watch(mockEncountersProvider);
     final requestLogs = ref.watch(mockRequestLogsProvider);
-    final receivedIds = requestLogs
-        .where((r) => r.status == RequestStatus.received)
-        .map((r) => r.encounterId)
-        .toSet();
+    // 受信済みのencounterIdとその受信日時のマップ
+    final receivedMap = Map.fromEntries(
+      requestLogs
+          .where((r) => r.status == RequestStatus.received && r.resolvedAt != null)
+          .map((r) => MapEntry(r.encounterId, r.resolvedAt!)),
+    );
 
     final now = DateTime.now();
     final encounters = allEncounters
-        .where((e) => !receivedIds.contains(e.id))
+        .where((e) {
+          final resolvedAt = receivedMap[e.id];
+          // 未受信 or 受信後にまた現れた場合は表示
+          if (resolvedAt == null) return true;
+          return e.lastSeenAt.isAfter(resolvedAt);
+        })
         .where((e) => now.difference(e.lastSeenAt).inMinutes < 3)
         .toList();
     final activeVenue = ref.watch(activeVenueProvider);
@@ -41,51 +48,70 @@ class StreamScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          if (activeVenue.isBroadcasting &&
-              activeVenue.teaser != null &&
-              activeVenue.teaser!.isNotEmpty)
+          if (activeVenue.isBroadcasting)
             Container(
-              color: Colors.orange.shade300,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
+              color: Colors.orange.shade50,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
-                    Icons.satellite_alt,
-                    color: Colors.white,
-                    size: 20,
+                  Row(
+                    children: [
+                      const Icon(Icons.satellite_alt, color: Colors.orange, size: 14),
+                      const SizedBox(width: 4),
+                      const Text(
+                        '自分のおしらせ',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => context.push('/compose'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.orange,
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('編集', style: TextStyle(fontSize: 12)),
+                      ),
+                      const SizedBox(width: 12),
+                      TextButton(
+                        onPressed: () => ref.read(activeVenueProvider.notifier).stop(),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.orange,
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('停止', style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      '会場モード ON',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                  if (activeVenue.teaser != null && activeVenue.teaser!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12, top: 2),
+                      child: Text(
+                        activeVenue.teaser!,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 12, top: 2),
+                      child: Text(
+                        '受信のみ',
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
                       ),
                     ),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      ref.read(activeVenueProvider.notifier).stop();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.orange,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 0,
-                      ),
-                      minimumSize: const Size(0, 32),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'スキャン中',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                  Divider(height: 1, color: Colors.orange.shade200),
                 ],
               ),
             ),

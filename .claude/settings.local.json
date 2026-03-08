@@ -12,7 +12,15 @@
       "Bash(open:*)",
       "Bash(flutter pub:*)",
       "Bash(flutter build:*)",
-      "Bash(ideviceinfo:*)"
+      "Bash(ideviceinfo:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(adb:*)",
+      "Bash(flutter install:*)",
+      "Bash(xcrun devicectl:*)",
+      "Bash(brew install:*)",
+      "Bash(ios-deploy:*)",
+      "Bash(echo status: $?:*)"
     ]
   }
 }

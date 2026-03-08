@@ -36,7 +36,7 @@ class MockEncounters extends _$MockEncounters {
       );
       final newState = List<Encounter>.from(state);
       newState[existingIndex] = updated;
-      newState.sort((a, b) => b.lastSeenAt.compareTo(a.lastSeenAt));
+      newState.sort((a, b) => b.receivedAt.compareTo(a.receivedAt));
       state = newState;
       databaseServiceProvider.upsertEncounter(updated);
     } else {

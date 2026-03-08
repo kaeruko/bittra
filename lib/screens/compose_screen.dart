@@ -16,6 +16,18 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   final _bodyController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final venue = ref.read(activeVenueProvider);
+      if (venue.isBroadcasting) {
+        if (venue.teaser != null) _teaserController.text = venue.teaser!;
+        if (venue.body != null) _bodyController.text = venue.body!;
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _teaserController.dispose();
     _bodyController.dispose();

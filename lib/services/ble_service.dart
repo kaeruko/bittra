@@ -33,6 +33,8 @@ class BleService {
         final teaser = event['teaser'] as String;
         final rssi = event['rssi'] as int;
 
+        // ignore: avoid_print
+        print('[BLE] encounter peerId=$peerId teaser=$teaser rssi=$rssi');
         // Push this data to the Provider (replacing mock with real logic eventually)
         ref
             .read(mockEncountersProvider.notifier)

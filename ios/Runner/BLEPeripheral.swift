@@ -35,6 +35,9 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
       log("PERIPH", "Bluetooth not poweredOn yet")
       return
     }
+    if pm.isAdvertising {
+      pm.stopAdvertising()
+    }
     setupGATTIfNeeded()
     startAdvertising()
   }

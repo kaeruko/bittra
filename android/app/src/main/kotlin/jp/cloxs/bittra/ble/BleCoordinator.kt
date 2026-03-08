@@ -22,17 +22,21 @@ class BleCoordinator(private val context: Context) {
     // Use MAC address as peerId for Android
     private val peripheralCache = mutableMapOf<String, BluetoothDevice>()
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     init {
         central.onEncounter = { device, teaser, rssi ->
-            peripheralCache[device.address] = device
-            onEncounterEvent?.invoke(
-                mapOf(
-                    "type" to "encounter",
-                    "peerId" to device.address,
-                    "teaser" to teaser,
-                    "rssi" to rssi
+            mainHandler.post {
+                peripheralCache[device.address] = device
+                onEncounterEvent?.invoke(
+                    mapOf(
+                        "type" to "encounter",
+                        "peerId" to device.address,
+                        "teaser" to teaser,
+                        "rssi" to rssi
+                    )
                 )
-            )
+            }
         }
     }
 
