@@ -125,6 +125,39 @@ class MockRequestLogs extends _$MockRequestLogs {
   }
 }
 
+// ブロック済みピアID管理
+@riverpod
+class BlockedPeers extends _$BlockedPeers {
+  static const _key = 'blocked_peers';
+
+  @override
+  List<String> build() {
+    _load();
+    return [];
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_key) ?? [];
+    try { state = list; } catch (_) {}
+  }
+
+  Future<void> blockPeer(String peerId) async {
+    if (state.contains(peerId)) return;
+    final newState = [...state, peerId];
+    state = newState;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_key, newState);
+  }
+
+  Future<void> unblockPeer(String peerId) async {
+    final newState = state.where((id) => id != peerId).toList();
+    state = newState;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_key, newState);
+  }
+}
+
 // Dummy Settings
 @riverpod
 class MockSettings extends _$MockSettings {

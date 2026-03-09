@@ -113,6 +113,58 @@ abstract class _$MockRequestLogs extends $Notifier<List<RequestLog>> {
   }
 }
 
+@ProviderFor(BlockedPeers)
+final blockedPeersProvider = BlockedPeersProvider._();
+
+final class BlockedPeersProvider
+    extends $NotifierProvider<BlockedPeers, List<String>> {
+  BlockedPeersProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'blockedPeersProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$blockedPeersHash();
+
+  @$internal
+  @override
+  BlockedPeers create() => BlockedPeers();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(List<String> value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<List<String>>(value),
+    );
+  }
+}
+
+String _$blockedPeersHash() => r'b1a2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0';
+
+abstract class _$BlockedPeers extends $Notifier<List<String>> {
+  List<String> build();
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final ref = this.ref as $Ref<List<String>, List<String>>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<List<String>, List<String>>,
+              List<String>,
+              Object?,
+              Object?
+            >;
+    element.handleCreate(ref, build);
+  }
+}
+
 @ProviderFor(MockSettings)
 final mockSettingsProvider = MockSettingsProvider._();
 

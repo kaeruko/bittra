@@ -7,6 +7,71 @@ import '../services/database_service.dart';
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
+  void _showBlockedUsersSheet(
+    BuildContext context,
+    WidgetRef ref,
+    List<String> blockedPeers,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.block, size: 18, color: Colors.grey),
+                  SizedBox(width: 8),
+                  Text(
+                    'ブロック中のユーザー',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            ...blockedPeers.map((peerId) => ListTile(
+                  leading: const Icon(Icons.person_off, color: Colors.grey),
+                  title: Text(
+                    peerId,
+                    style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: TextButton(
+                    onPressed: () async {
+                      Navigator.of(sheetCtx).pop();
+                      await ref.read(blockedPeersProvider.notifier).unblockPeer(peerId);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('ブロックを解除しました')),
+                        );
+                      }
+                    },
+                    child: const Text('解除'),
+                  ),
+                )),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(mockSettingsProvider);
@@ -42,6 +107,25 @@ class SettingsScreen extends ConsumerWidget {
             value: settings['powerSave'] ?? false,
             onChanged: (val) {
               ref.read(mockSettingsProvider.notifier).togglePowerSave();
+            },
+          ),
+          const Divider(),
+          Consumer(
+            builder: (context, ref, _) {
+              final blockedPeers = ref.watch(blockedPeersProvider);
+              return ListTile(
+                leading: const Icon(Icons.block, color: Colors.grey),
+                title: const Text('ブロック中のユーザー'),
+                trailing: blockedPeers.isEmpty
+                    ? const Text('なし', style: TextStyle(color: Colors.grey))
+                    : Text(
+                        '${blockedPeers.length}人',
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                onTap: blockedPeers.isEmpty
+                    ? null
+                    : () => _showBlockedUsersSheet(context, ref, blockedPeers),
+              );
             },
           ),
           const Divider(),

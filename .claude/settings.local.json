@@ -20,7 +20,9 @@
       "Bash(xcrun devicectl:*)",
       "Bash(brew install:*)",
       "Bash(ios-deploy:*)",
-      "Bash(echo status: $?:*)"
+      "Bash(echo status: $?:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(flutter:*)"
     ]
   }
 }
