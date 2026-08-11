@@ -23,7 +23,7 @@ android {
             storePassword = keystoreProperties.getProperty("storePassword")
         }
     }
-    namespace = "jp.cloxs.bittra"
+    namespace = "jp.cloxs.bitra"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -38,7 +38,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "jp.cloxs.bittra"
+        applicationId = "jp.cloxs.bitra"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

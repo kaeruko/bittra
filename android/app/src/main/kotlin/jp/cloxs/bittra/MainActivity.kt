@@ -1,4 +1,4 @@
-package jp.cloxs.bittra
+package jp.cloxs.bitra
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -6,15 +6,15 @@ import android.os.Build
 import androidx.annotation.NonNull
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import jp.cloxs.bittra.ble.BleCoordinator
+import jp.cloxs.bitra.ble.BleCoordinator
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val METHOD_CHANNEL = "bittra/ble"
-    private val EVENT_CHANNEL = "bittra/ble_events"
+    private val METHOD_CHANNEL = "bitra/ble"
+    private val EVENT_CHANNEL = "bitra/ble_events"
 
     private var bleCoordinator: BleCoordinator? = null
     private var eventSink: EventChannel.EventSink? = null

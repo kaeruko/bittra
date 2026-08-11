@@ -1,4 +1,4 @@
-package jp.cloxs.bittra.ble
+package jp.cloxs.bitra.ble
 
 import java.nio.charset.StandardCharsets
 import java.text.Normalizer
