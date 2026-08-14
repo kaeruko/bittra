@@ -52,13 +52,15 @@ class DetailScreen extends ConsumerWidget {
         final url = urlMatch.group(0)!;
         body = _BodyWithWebView(text: text, url: url);
       } else {
-        body = SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: SelectableText(
-            text,
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
-        );
+        body = text.isEmpty
+            ? const Center(child: Text('本文はありません'))
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: SelectableText(
+                  text,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              );
       }
     }
 

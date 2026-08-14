@@ -31,7 +31,7 @@ class BleCentral(private val context: Context, private val log: (String, String)
     private val adapter: BluetoothAdapter? = bluetoothManager.adapter
     private val scanner = adapter?.bluetoothLeScanner
 
-    var onEncounter: ((BluetoothDevice, String, Int) -> Unit)? = null
+    var onEncounter: ((BluetoothDevice, Long, String, Int) -> Unit)? = null
     var onStatus: ((RequestStatus, String?) -> Unit)? = null
     var onPreview: ((String) -> Unit)? = null
     var onBody: ((String) -> Unit)? = null
@@ -45,6 +45,8 @@ class BleCentral(private val context: Context, private val log: (String, String)
     private var timeoutRunnable: Runnable? = null
     private var retryLeft = 1
     private var targetDevice: BluetoothDevice? = null
+    private var isScanning = false
+    private var resumeScanAfterRequest = false
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -91,27 +93,44 @@ class BleCentral(private val context: Context, private val log: (String, String)
             if (payload == null) return
 
             val decoded = PayloadCodec.decodeAdvert(payload) ?: return
-            onEncounter?.invoke(result.device, decoded.teaser, result.rssi)
+            if (decoded.teaser.isEmpty()) return
+            onEncounter?.invoke(result.device, decoded.senderId, decoded.teaser, result.rssi)
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            isScanning = false
+            log("SCAN", "startScan failed: $errorCode")
         }
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            if (gatt !== currentGatt) {
+                gatt.close()
+                return
+            }
+
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 log("CENTRAL", "didConnect")
-                mainHandler.post {
+                // Some Android Bluetooth stacks stall service discovery while a
+                // low-latency scan is running or when discovery starts immediately.
+                mainHandler.postDelayed({
+                    if (gatt !== currentGatt) return@postDelayed
                     onStatus?.invoke(RequestStatus.DISCOVERING, null)
-                    gatt.discoverServices()
-                }
+                    if (!gatt.discoverServices()) {
+                        failOrRetry("discover_services_not_started")
+                    }
+                }, 300)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 log("CENTRAL", "didDisconnect status=$status")
-                if (status != BluetoothGatt.GATT_SUCCESS && currentGatt != null) {
+                if (status != BluetoothGatt.GATT_SUCCESS && currentGatt === gatt) {
                     mainHandler.post { failOrRetry("connect_failed_status_$status") }
                 }
             }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (gatt !== currentGatt) return
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 log("CENTRAL", "discoverServices error $status")
                 mainHandler.post { failOrRetry("discover_services_$status") }
@@ -148,6 +167,7 @@ class BleCentral(private val context: Context, private val log: (String, String)
         }
 
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            if (gatt !== currentGatt) return
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 mainHandler.post { sendRequest() }
             } else {
@@ -196,9 +216,8 @@ class BleCentral(private val context: Context, private val log: (String, String)
                 onBody?.invoke(s)
                 onPreview?.invoke(preview)
                 onStatus?.invoke(RequestStatus.COMPLETED, null)
-                currentGatt?.disconnect()
-                currentGatt?.close()
-                currentGatt = null
+                closeCurrentGatt()
+                finishRequest()
             }
         }
     }
@@ -209,8 +228,11 @@ class BleCentral(private val context: Context, private val log: (String, String)
         reqChar?.let {
             it.value = req
             it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            currentGatt?.writeCharacteristic(it)
-            log("CENTRAL", "REQ sent")
+            if (currentGatt?.writeCharacteristic(it) == true) {
+                log("CENTRAL", "REQ sent")
+            } else {
+                failOrRetry("request_write_not_started")
+            }
         } ?: failOrRetry("no_req_char")
     }
 
@@ -220,29 +242,40 @@ class BleCentral(private val context: Context, private val log: (String, String)
             return
         }
 
+        if (isScanning) {
+            log("SCAN", "already scanning")
+            return
+        }
+
         val filters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(GATTProfile.SERVICE_UUID)).build())
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
         scanner.startScan(filters, settings, scanCallback)
+        isScanning = true
         log("SCAN", "startScan")
     }
 
     fun stopScan() {
-        scanner?.stopScan(scanCallback)
+        if (isScanning) {
+            scanner?.stopScan(scanCallback)
+            isScanning = false
+        }
         log("SCAN", "stopScan")
     }
 
     fun requestBody(device: BluetoothDevice) {
         log("CENTRAL", "requestBody called for peerId=${device.address}")
+        retryLeft = 1
+        targetDevice = device
+        resumeScanAfterRequest = isScanning
+        if (isScanning) stopScan()
         connect(device)
     }
 
     private fun connect(device: BluetoothDevice) {
         resetRequestState()
-        retryLeft = 1
-        targetDevice = device
         onStatus?.invoke(RequestStatus.CONNECTING, null)
         
         currentGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
@@ -256,9 +289,22 @@ class BleCentral(private val context: Context, private val log: (String, String)
         assembler.reset()
         reqChar = null
         chunkChar = null
-        currentGatt?.disconnect()
-        currentGatt?.close()
+        closeCurrentGatt()
+    }
+
+    private fun closeCurrentGatt() {
+        val oldGatt = currentGatt
         currentGatt = null
+        oldGatt?.disconnect()
+        oldGatt?.close()
+    }
+
+    private fun finishRequest() {
+        targetDevice = null
+        if (resumeScanAfterRequest) {
+            resumeScanAfterRequest = false
+            startScan()
+        }
     }
 
     private fun startTimeout(ms: Long) {
@@ -278,21 +324,18 @@ class BleCentral(private val context: Context, private val log: (String, String)
     }
 
     private fun failOrRetry(reason: String) {
+        stopTimeout()
         if (retryLeft > 0 && targetDevice != null) {
             retryLeft -= 1
             log("CENTRAL", "retry $retryLeft reason=$reason")
             val p = targetDevice!!
-            currentGatt?.disconnect()
-            currentGatt?.close()
-            currentGatt = null
+            closeCurrentGatt()
             
             mainHandler.postDelayed({ connect(p) }, 200)
         } else {
             onStatus?.invoke(RequestStatus.FAILED, reason)
-            currentGatt?.disconnect()
-            currentGatt?.close()
-            currentGatt = null
-            stopTimeout()
+            closeCurrentGatt()
+            finishRequest()
         }
     }
 }

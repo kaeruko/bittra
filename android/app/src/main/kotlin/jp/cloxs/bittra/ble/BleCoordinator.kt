@@ -25,17 +25,20 @@ class BleCoordinator(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
-        central.onEncounter = { device, teaser, rssi ->
-            mainHandler.post {
-                peripheralCache[device.address] = device
-                onEncounterEvent?.invoke(
-                    mapOf(
-                        "type" to "encounter",
-                        "peerId" to device.address,
-                        "teaser" to teaser,
-                        "rssi" to rssi
+        central.onEncounter = { device, senderId, teaser, rssi ->
+            if (teaser.isNotEmpty()) {
+                mainHandler.post {
+                    peripheralCache[device.address] = device
+                    onEncounterEvent?.invoke(
+                        mapOf(
+                            "type" to "encounter",
+                            "peerId" to device.address,
+                            "senderId" to senderId,
+                            "teaser" to teaser,
+                            "rssi" to rssi
+                        )
                     )
-                )
+                }
             }
         }
     }
@@ -53,10 +56,20 @@ class BleCoordinator(private val context: Context) {
     }
 
     fun startVenueMode() {
+        if (myTeaser.isEmpty()) {
+            startReceiveOnly()
+            return
+        }
         peripheral.setContent(myTeaser, myBody)
         peripheral.start()
         central.startScan()
         addLog("APP", "venue ON")
+    }
+
+    fun startReceiveOnly() {
+        peripheral.stop()
+        central.startScan()
+        addLog("APP", "receive-only ON")
     }
 
     fun stopVenueMode() {
@@ -127,6 +140,7 @@ class BleCoordinator(private val context: Context) {
     }
 
     private fun addLog(tag: String, msg: String) {
+        android.util.Log.d("BittraBLE", "[$tag] $msg")
         Handler(Looper.getMainLooper()).post {
             onLogEvent?.invoke(
                 mapOf(

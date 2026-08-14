@@ -45,26 +45,30 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
             const Divider(height: 1),
-            ...blockedPeers.map((peerId) => ListTile(
-                  leading: const Icon(Icons.person_off, color: Colors.grey),
-                  title: Text(
-                    peerId,
-                    style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: TextButton(
-                    onPressed: () async {
-                      Navigator.of(sheetCtx).pop();
-                      await ref.read(blockedPeersProvider.notifier).unblockPeer(peerId);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('ブロックを解除しました')),
-                        );
-                      }
-                    },
-                    child: const Text('解除'),
-                  ),
-                )),
+            ...blockedPeers.map(
+              (peerId) => ListTile(
+                leading: const Icon(Icons.person_off, color: Colors.grey),
+                title: Text(
+                  peerId,
+                  style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: TextButton(
+                  onPressed: () async {
+                    Navigator.of(sheetCtx).pop();
+                    await ref
+                        .read(blockedPeersProvider.notifier)
+                        .unblockPeer(peerId);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('ブロックを解除しました')),
+                      );
+                    }
+                  },
+                  child: const Text('解除'),
+                ),
+              ),
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -82,20 +86,19 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         children: [
           SwitchListTile(
-            title: const Text('送受信を有効にする'),
-            subtitle: const Text('Bluetoothでの送受信を有効にします'),
+            title: const Text('会場モード'),
+            subtitle: Text(
+              activeVenue.isBroadcasting
+                  ? activeVenue.isSending
+                        ? 'Bluetoothで送受信しています'
+                        : 'Bluetoothで受信しています（投稿すると送信も始まります）'
+                  : 'ONにするとBluetoothで受信を始めます',
+            ),
             value: activeVenue.isBroadcasting,
             onChanged: (val) {
               if (val) {
-                if (activeVenue.teaser != null &&
-                    activeVenue.teaser!.isNotEmpty) {
-                  ref
-                      .read(activeVenueProvider.notifier)
-                      .start(activeVenue.teaser!, activeVenue.body ?? '');
-                } else {
-                  ref.read(activeVenueProvider.notifier).startReceiveOnly();
-                  context.go('/');
-                }
+                ref.read(activeVenueProvider.notifier).startReceiveOnly();
+                context.go('/');
               } else {
                 ref.read(activeVenueProvider.notifier).stop();
               }

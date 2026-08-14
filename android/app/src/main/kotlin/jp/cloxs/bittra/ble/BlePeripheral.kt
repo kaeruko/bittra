@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
+import java.security.SecureRandom
 import java.util.UUID
 
 @SuppressLint("MissingPermission")
@@ -21,6 +22,8 @@ class BlePeripheral(private val context: Context, private val log: (String, Stri
 
     private var gattServer: BluetoothGattServer? = null
     private var isAdvertising = false
+    private var isGattServiceReady = false
+    private var startAdvertisingWhenReady = false
 
     private var myTeaser: String = ""
     private var myBody: String = ""
@@ -30,6 +33,18 @@ class BlePeripheral(private val context: Context, private val log: (String, Stri
     private var subscribedDevice: BluetoothDevice? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val senderId: Long by lazy {
+        val prefs = context.getSharedPreferences("bittra_ble", Context.MODE_PRIVATE)
+        if (prefs.contains("sender_id")) {
+            prefs.getLong("sender_id", 1L)
+        } else {
+            var generated = SecureRandom().nextInt().toLong() and 0xFFFFFFFFL
+            if (generated == 0L) generated = 1L
+            prefs.edit().putLong("sender_id", generated).apply()
+            generated
+        }
+    }
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
@@ -44,6 +59,16 @@ class BlePeripheral(private val context: Context, private val log: (String, Stri
     }
 
     private val gattServerCallback = object : BluetoothGattServerCallback() {
+        override fun onServiceAdded(status: Int, service: BluetoothGattService) {
+            if (service.uuid != GATTProfile.SERVICE_UUID) return
+            isGattServiceReady = status == BluetoothGatt.GATT_SUCCESS
+            log("PERIPH", "GATT service ready status=$status")
+            if (isGattServiceReady && startAdvertisingWhenReady) {
+                startAdvertisingWhenReady = false
+                startAdvertising()
+            }
+        }
+
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             log("PERIPH", "connectionStateChange ${device.address} status=$status newState=$newState")
         }
@@ -104,6 +129,11 @@ class BlePeripheral(private val context: Context, private val log: (String, Stri
     }
 
     fun start() {
+        if (PayloadCodec.normalizeTeaser(myTeaser).isEmpty()) {
+            stop()
+            log("PERIPH", "skip empty teaser advertisement")
+            return
+        }
         if (adapter == null || !adapter.isEnabled) {
             log("PERIPH", "Bluetooth not poweredOn yet")
             return
@@ -116,21 +146,34 @@ class BlePeripheral(private val context: Context, private val log: (String, Stri
         }
 
         setupGATTIfNeeded()
-        startAdvertising()
+        if (isGattServiceReady) {
+            startAdvertising()
+        } else {
+            startAdvertisingWhenReady = true
+        }
     }
 
     fun stop() {
+        startAdvertisingWhenReady = false
         if (isAdvertising) {
             advertiser?.stopAdvertising(advertiseCallback)
             isAdvertising = false
             log("PERIPH", "stopAdvertising")
         }
+        pendingNotifyPackets.clear()
+        isNotifying = false
+        subscribedDevice = null
+        gattServer?.clearServices()
+        gattServer?.close()
+        gattServer = null
+        isGattServiceReady = false
     }
 
     private fun setupGATTIfNeeded() {
         if (gattServer != null) return
 
         gattServer = bluetoothManager.openGattServer(context, gattServerCallback)
+        isGattServiceReady = false
 
         val service = BluetoothGattService(GATTProfile.SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
 
@@ -169,8 +212,7 @@ class BlePeripheral(private val context: Context, private val log: (String, Stri
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
             .build()
 
-        val nonce = (0..65535).random()
-        val payload = PayloadCodec.encodeAdvert(myTeaser, nonce)
+        val payload = PayloadCodec.encodeAdvert(myTeaser, senderId)
 
         // Main packet: service UUID only (for iOS scan filter)
         val advertiseData = AdvertiseData.Builder()
@@ -197,7 +239,9 @@ class BlePeripheral(private val context: Context, private val log: (String, Stri
         val rest = if (bytes.size > GATTProfile.PREVIEW_BYTES) bytes.copyOfRange(GATTProfile.PREVIEW_BYTES, bytes.size) else ByteArray(0)
 
         // MTU usually 23 bytes minimum, meaning 20 bytes payload. We use slightly larger if MTU is negotiated, but stick to 20 for safety on Android.
-        val chunkPayloadSize = 20
+        // The packet header also consumes 3 bytes. Keep the complete ATT value
+        // within the 20-byte minimum notification payload.
+        val chunkPayloadSize = 17
         var seq = 0
 
         fun enqueueChunks(data: ByteArray, isLastBlockPotentially: Boolean) {
@@ -220,6 +264,12 @@ class BlePeripheral(private val context: Context, private val log: (String, Stri
 
         enqueueChunks(preview, rest.isEmpty())
         enqueueChunks(rest, true)
+
+        // Even an empty body needs a terminal packet, otherwise the receiver
+        // can never know that the transfer completed.
+        if (pendingNotifyPackets.isEmpty()) {
+            pendingNotifyPackets.add(byteArrayOf(0x00, 0x00, 0x01))
+        }
 
         if (pendingNotifyPackets.isNotEmpty()) {
             val lastIndex = pendingNotifyPackets.size - 1

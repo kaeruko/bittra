@@ -9,6 +9,9 @@ class BleBridge {
   static Future<void> startVenueMode() =>
       _channel.invokeMethod('startVenueMode');
 
+  static Future<void> startReceiveOnly() =>
+      _channel.invokeMethod('startReceiveOnly');
+
   static Future<void> stopVenueMode() => _channel.invokeMethod('stopVenueMode');
 
   static Future<void> setTeaser(String teaser) =>

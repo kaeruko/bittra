@@ -8,6 +8,10 @@ part 'mock_data_provider.g.dart';
 
 @riverpod
 class MockEncounters extends _$MockEncounters {
+  static const _separateEncounterGap = Duration(seconds: 30);
+  static const _screenRefreshInterval = Duration(seconds: 2);
+  final Map<String, DateTime> _lastRawSightings = {};
+
   @override
   List<Encounter> build() {
     _loadFromDb();
@@ -16,27 +20,52 @@ class MockEncounters extends _$MockEncounters {
 
   Future<void> _loadFromDb() async {
     final encounters = await databaseServiceProvider.loadEncounters();
-    try { state = encounters; } catch (_) {}
+    try {
+      state = encounters;
+    } catch (_) {}
   }
 
   void upsertEncounter({
     required String peerId,
+    int? senderId,
     required String teaser,
     required int rssi,
   }) {
-    final dedupeKey = '$peerId|$teaser';
+    final dedupeKey = senderId == null ? '$peerId|$teaser' : 'sender:$senderId';
     final now = DateTime.now();
+    final previousRawSighting = _lastRawSightings[dedupeKey];
+    _lastRawSightings[dedupeKey] = now;
 
-    final existingIndex = state.indexWhere((e) => e.dedupeKey == dedupeKey);
+    var existingIndex = state.indexWhere((e) => e.dedupeKey == dedupeKey);
+    // Migrate the row created by an older build without creating another card.
+    if (existingIndex < 0 && senderId != null) {
+      existingIndex = state.indexWhere((e) => e.dedupeKey == '$peerId|$teaser');
+    }
     if (existingIndex >= 0) {
       final existing = state[existingIndex];
+      final gap = previousRawSighting == null
+          ? now.difference(existing.lastSeenAt)
+          : now.difference(previousRawSighting);
+      final isSeparateEncounter = gap >= _separateEncounterGap;
+
+      // Advertisements arrive several times a second. Keep the latest sighting
+      // fresh without rebuilding the screen and writing SQLite for every packet.
+      if (!isSeparateEncounter &&
+          now.difference(existing.lastSeenAt) < _screenRefreshInterval) {
+        return;
+      }
+
       final updated = existing.copyWith(
-        count: existing.count + 1,
+        peerId: peerId,
+        teaser: teaser,
+        dedupeKey: dedupeKey,
+        rssi: rssi,
+        count: existing.count + (isSeparateEncounter ? 1 : 0),
         lastSeenAt: now,
       );
       final newState = List<Encounter>.from(state);
       newState[existingIndex] = updated;
-      newState.sort((a, b) => b.receivedAt.compareTo(a.receivedAt));
+      newState.sort((a, b) => b.lastSeenAt.compareTo(a.lastSeenAt));
       state = newState;
       databaseServiceProvider.upsertEncounter(updated);
     } else {
@@ -48,6 +77,7 @@ class MockEncounters extends _$MockEncounters {
         dedupeKey: dedupeKey,
         lastSeenAt: now,
         count: 1,
+        rssi: rssi,
       );
       state = [newEnc, ...state];
       databaseServiceProvider.upsertEncounter(newEnc);
@@ -70,7 +100,9 @@ class MockRequestLogs extends _$MockRequestLogs {
 
   Future<void> _loadFromDb() async {
     final logs = await databaseServiceProvider.loadRequestLogs();
-    try { state = logs; } catch (_) {}
+    try {
+      state = logs;
+    } catch (_) {}
   }
 
   void addRequest(RequestLog log) {
@@ -139,7 +171,9 @@ class BlockedPeers extends _$BlockedPeers {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList(_key) ?? [];
-    try { state = list; } catch (_) {}
+    try {
+      state = list;
+    } catch (_) {}
   }
 
   Future<void> blockPeer(String peerId) async {
@@ -174,14 +208,26 @@ class MockSettings extends _$MockSettings {
 
 class VenueState {
   final bool isBroadcasting;
+  final bool isSending;
   final String? teaser;
   final String? body;
 
-  const VenueState({required this.isBroadcasting, this.teaser, this.body});
+  const VenueState({
+    required this.isBroadcasting,
+    this.isSending = false,
+    this.teaser,
+    this.body,
+  });
 
-  VenueState copyWith({bool? isBroadcasting, String? teaser, String? body}) {
+  VenueState copyWith({
+    bool? isBroadcasting,
+    bool? isSending,
+    String? teaser,
+    String? body,
+  }) {
     return VenueState(
       isBroadcasting: isBroadcasting ?? this.isBroadcasting,
+      isSending: isSending ?? this.isSending,
       teaser: teaser ?? this.teaser,
       body: body ?? this.body,
     );
@@ -191,6 +237,7 @@ class VenueState {
 @riverpod
 class ActiveVenue extends _$ActiveVenue {
   static const _keyBroadcasting = 'venue_broadcasting';
+  static const _keySending = 'venue_sending';
   static const _keyTeaser = 'venue_teaser';
   static const _keyBody = 'venue_body';
 
@@ -205,14 +252,26 @@ class ActiveVenue extends _$ActiveVenue {
     final teaser = prefs.getString(_keyTeaser);
     final body = prefs.getString(_keyBody) ?? '';
     final wasBroadcasting = prefs.getBool(_keyBroadcasting) ?? false;
+    // Older builds did not distinguish receive-only from sending. Default to
+    // receive-only so an old draft is never transmitted unexpectedly.
+    final wasSending = prefs.getBool(_keySending) ?? false;
 
-    try { state; } catch (_) { return; }
+    try {
+      state;
+    } catch (_) {
+      return;
+    }
 
-    if (wasBroadcasting && teaser != null && teaser.isNotEmpty) {
-      state = VenueState(isBroadcasting: true, teaser: teaser, body: body);
+    if (wasBroadcasting && wasSending && teaser != null && teaser.isNotEmpty) {
+      state = VenueState(
+        isBroadcasting: true,
+        isSending: true,
+        teaser: teaser,
+        body: body,
+      );
       ref.read(bleServiceProvider).startVenueMode(teaser, body);
     } else if (wasBroadcasting) {
-      state = state.copyWith(isBroadcasting: true);
+      state = VenueState(isBroadcasting: true, teaser: teaser, body: body);
       ref.read(bleServiceProvider).startReceiveOnly();
     }
   }
@@ -220,24 +279,38 @@ class ActiveVenue extends _$ActiveVenue {
   Future<void> _save(VenueState s) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyBroadcasting, s.isBroadcasting);
+    await prefs.setBool(_keySending, s.isSending);
     if (s.teaser != null) await prefs.setString(_keyTeaser, s.teaser!);
     if (s.body != null) await prefs.setString(_keyBody, s.body!);
   }
 
   void start(String teaser, String body) {
-    state = VenueState(isBroadcasting: true, teaser: teaser, body: body);
+    state = VenueState(
+      isBroadcasting: true,
+      isSending: true,
+      teaser: teaser,
+      body: body,
+    );
     _save(state);
     ref.read(bleServiceProvider).startVenueMode(teaser, body);
   }
 
   void startReceiveOnly() {
-    state = state.copyWith(isBroadcasting: true);
+    state = VenueState(
+      isBroadcasting: true,
+      teaser: state.teaser,
+      body: state.body,
+    );
     _save(state);
     ref.read(bleServiceProvider).startReceiveOnly();
   }
 
   void stop() {
-    state = state.copyWith(isBroadcasting: false);
+    state = VenueState(
+      isBroadcasting: false,
+      teaser: state.teaser,
+      body: state.body,
+    );
     _save(state);
     ref.read(bleServiceProvider).stopVenueMode();
   }

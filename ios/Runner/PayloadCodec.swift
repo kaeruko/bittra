@@ -40,7 +40,7 @@ enum PayloadCodec {
     return data
   }
 
-  static func decodeAdvert(_ data: Data) -> (nonce: UInt16, teaser: String)? {
+  static func decodeAdvert(_ data: Data) -> (senderId: UInt32, teaser: String)? {
     if data.count < 5 { return nil }
     let m0 = UInt16(data[0])
     let m1 = UInt16(data[1]) << 8
@@ -49,14 +49,22 @@ enum PayloadCodec {
 
     let n0 = UInt16(data[2])
     let n1 = UInt16(data[3]) << 8
-    let nonce = n0 | n1
+    let senderIdLow = n0 | n1
 
     let len = Int(data[4])
     guard data.count >= 5 + len else { return nil }
 
     let teaserBytes = data.subdata(in: 5..<(5 + len))
     let teaser = String(data: teaserBytes, encoding: .utf8) ?? ""
-    return (nonce, teaser)
+    let highOffset = 5 + len
+    let senderIdHigh: UInt32
+    if data.count >= highOffset + 2 {
+      senderIdHigh = UInt32(data[highOffset]) | (UInt32(data[highOffset + 1]) << 8)
+    } else {
+      senderIdHigh = 0
+    }
+    let senderId = UInt32(senderIdLow) | (senderIdHigh << 16)
+    return (senderId, teaser)
   }
 
   // UTF-8を壊さず maxBytes 以内に切る

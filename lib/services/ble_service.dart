@@ -30,6 +30,7 @@ class BleService {
     switch (type) {
       case 'encounter':
         final peerId = event['peerId'] as String;
+        final senderId = (event['senderId'] as num?)?.toInt();
         final teaser = event['teaser'] as String;
         final rssi = event['rssi'] as int;
 
@@ -38,7 +39,12 @@ class BleService {
         // Push this data to the Provider (replacing mock with real logic eventually)
         ref
             .read(mockEncountersProvider.notifier)
-            .upsertEncounter(peerId: peerId, teaser: teaser, rssi: rssi);
+            .upsertEncounter(
+              peerId: peerId,
+              senderId: senderId,
+              teaser: teaser,
+              rssi: rssi,
+            );
         break;
 
       case 'status':
@@ -107,7 +113,7 @@ class BleService {
 
   Future<void> startReceiveOnly() async {
     try {
-      await BleBridge.startVenueMode();
+      await BleBridge.startReceiveOnly();
     } on PlatformException catch (e) {
       log('Failed to start receive-only mode: ${e.message}');
     }

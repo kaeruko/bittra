@@ -17,6 +17,19 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
   private var pendingNotifyPackets: [Data] = []
   private var isNotifying: Bool = false
   private var shouldStartWhenPoweredOn: Bool = false
+  private var isGattServiceReady: Bool = false
+  private var startAdvertisingWhenReady: Bool = false
+
+  private lazy var senderId: UInt16 = {
+    let defaults = UserDefaults.standard
+    let key = "bittra_ble_sender_id"
+    if defaults.object(forKey: key) != nil {
+      return UInt16(truncatingIfNeeded: defaults.integer(forKey: key))
+    }
+    let generated = UInt16.random(in: 1...UInt16.max)
+    defaults.set(Int(generated), forKey: key)
+    return generated
+  }()
 
   init(log: @escaping (String, String) -> Void) {
     self.log = log
@@ -30,6 +43,11 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
   }
 
   func start() {
+    guard !PayloadCodec.normalizeTeaser(myTeaser).isEmpty else {
+      stop()
+      log("PERIPH", "skip empty teaser advertisement")
+      return
+    }
     guard pm.state == .poweredOn else {
       shouldStartWhenPoweredOn = true
       log("PERIPH", "Bluetooth not poweredOn yet")
@@ -39,12 +57,24 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
       pm.stopAdvertising()
     }
     setupGATTIfNeeded()
-    startAdvertising()
+    if isGattServiceReady {
+      startAdvertising()
+    } else {
+      startAdvertisingWhenReady = true
+    }
   }
 
   func stop() {
     shouldStartWhenPoweredOn = false
+    startAdvertisingWhenReady = false
     pm.stopAdvertising()
+    pendingNotifyPackets.removeAll()
+    isNotifying = false
+    pm.removeAllServices()
+    service = nil
+    reqChar = nil
+    chunkChar = nil
+    isGattServiceReady = false
     log("PERIPH", "stopAdvertising")
   }
 
@@ -69,13 +99,13 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
     service.characteristics = [reqChar, chunkChar]
 
     pm.removeAllServices()
+    isGattServiceReady = false
     pm.add(service)
     log("PERIPH", "GATT service added")
   }
 
   private func startAdvertising() {
-    let nonce = UInt16.random(in: 0...UInt16.max)
-    let payload = PayloadCodec.encodeAdvert(teaser: myTeaser, nonce: nonce)
+    let payload = PayloadCodec.encodeAdvert(teaser: myTeaser, nonce: senderId)
     let payloadString = payload.base64EncodedString()
 
     pm.startAdvertising([
@@ -93,6 +123,18 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
       log("PERIPH", "Bluetooth is now poweredOn, starting delayed broadcast")
       shouldStartWhenPoweredOn = false
       start()
+    }
+  }
+
+  func peripheralManager(_ peripheral: CBPeripheralManager,
+                         didAdd service: CBService,
+                         error: Error?) {
+    guard self.service != nil, service === self.service else { return }
+    isGattServiceReady = error == nil
+    log("PERIPH", "GATT service ready error=\(error?.localizedDescription ?? "-")")
+    if isGattServiceReady && startAdvertisingWhenReady {
+      startAdvertisingWhenReady = false
+      startAdvertising()
     }
   }
 
@@ -145,6 +187,11 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
 
     enqueueChunks(Data(preview), isLastBlockPotentially: rest.isEmpty)
     enqueueChunks(Data(rest), isLastBlockPotentially: true)
+
+    // Send an explicit final packet even when the body is empty.
+    if pendingNotifyPackets.isEmpty {
+      pendingNotifyPackets.append(Data([0x00, 0x00, 0x01]))
+    }
 
     // lastフラグを最後のpacketに立てる
     if !pendingNotifyPackets.isEmpty {

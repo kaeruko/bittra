@@ -16,7 +16,9 @@ class StreamScreen extends ConsumerWidget {
     // 受信済みのencounterIdとその受信日時のマップ
     final receivedMap = Map.fromEntries(
       requestLogs
-          .where((r) => r.status == RequestStatus.received && r.resolvedAt != null)
+          .where(
+            (r) => r.status == RequestStatus.received && r.resolvedAt != null,
+          )
           .map((r) => MapEntry(r.encounterId, r.resolvedAt!)),
     );
 
@@ -31,6 +33,9 @@ class StreamScreen extends ConsumerWidget {
         .where((e) => !blockedPeers.contains(e.peerId)) // ブロック済みを除外
         .toList();
     final activeVenue = ref.watch(activeVenueProvider);
+    final isSending =
+        activeVenue.isSending &&
+        (activeVenue.teaser?.trim().isNotEmpty ?? false);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -52,47 +57,62 @@ class StreamScreen extends ConsumerWidget {
           if (activeVenue.isBroadcasting)
             Container(
               color: Colors.orange.shade50,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.satellite_alt, color: Colors.orange, size: 14),
+                      Icon(
+                        isSending
+                            ? Icons.satellite_alt
+                            : Icons.bluetooth_searching,
+                        color: Colors.orange,
+                        size: 18,
+                      ),
                       const SizedBox(width: 4),
-                      const Text(
-                        '自分のおしらせ',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.orange,
-                          fontWeight: FontWeight.bold,
+                      Expanded(
+                        child: Text(
+                          isSending ? '自分のおしらせ' : '近くのおしらせを受信中',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                      const Spacer(),
                       TextButton(
-                        onPressed: () => context.push('/compose'),
+                        onPressed: () => context.go('/compose'),
                         style: TextButton.styleFrom(
                           foregroundColor: Colors.orange,
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          minimumSize: const Size(64, 48),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
-                        child: const Text('編集', style: TextStyle(fontSize: 12)),
+                        child: Text(
+                          isSending ? '編集' : '投稿する',
+                          style: const TextStyle(fontSize: 13),
+                        ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 4),
                       TextButton(
-                        onPressed: () => ref.read(activeVenueProvider.notifier).stop(),
+                        onPressed: () {
+                          ref.read(activeVenueProvider.notifier).stop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('会場モードを停止しました')),
+                          );
+                        },
                         style: TextButton.styleFrom(
                           foregroundColor: Colors.orange,
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          minimumSize: const Size(56, 48),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
-                        child: const Text('停止', style: TextStyle(fontSize: 12)),
+                        child: const Text('停止', style: TextStyle(fontSize: 13)),
                       ),
                     ],
                   ),
-                  if (activeVenue.teaser != null && activeVenue.teaser!.isNotEmpty)
+                  if (isSending)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12, top: 2),
                       child: Text(
@@ -106,10 +126,10 @@ class StreamScreen extends ConsumerWidget {
                     )
                   else
                     const Padding(
-                      padding: EdgeInsets.only(bottom: 12, top: 2),
+                      padding: EdgeInsets.only(bottom: 12, top: 0),
                       child: Text(
-                        '受信のみ',
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                        '自分からは送信していません',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ),
                   Divider(height: 1, color: Colors.orange.shade200),
@@ -207,11 +227,13 @@ class EncounterCard extends ConsumerWidget {
           TextButton(
             onPressed: () async {
               Navigator.of(dialogCtx).pop();
-              await ref.read(blockedPeersProvider.notifier).blockPeer(encounter.peerId);
+              await ref
+                  .read(blockedPeersProvider.notifier)
+                  .blockPeer(encounter.peerId);
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('ユーザーをブロックしました')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('ユーザーをブロックしました')));
               }
             },
             child: const Text('ブロック', style: TextStyle(color: Colors.red)),
@@ -239,12 +261,14 @@ class EncounterCard extends ConsumerWidget {
                 onChanged: (val) => setState(() => selectedReason = val),
                 child: Column(
                   children: ['スパム', '不適切な表現', '嫌がらせ・ハラスメント', 'その他']
-                      .map((reason) => RadioListTile<String>(
-                            title: Text(reason),
-                            value: reason,
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ))
+                      .map(
+                        (reason) => RadioListTile<String>(
+                          title: Text(reason),
+                          value: reason,
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      )
                       .toList(),
                 ),
               ),
@@ -313,7 +337,7 @@ class EncounterCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '${_getTimeAgo(encounter.receivedAt)}・×${encounter.count}',
+                      '${_getTimeAgo(encounter.lastSeenAt)}・×${encounter.count}',
                       style: const TextStyle(fontSize: 14, color: Colors.grey),
                     ),
                   ],

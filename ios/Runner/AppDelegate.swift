@@ -51,6 +51,10 @@ import UIKit
       ble.startVenueMode()
       result(nil)
 
+    case "startReceiveOnly":
+      ble.startReceiveOnly()
+      result(nil)
+
     case "stopVenueMode":
       ble.stopVenueMode()
       result(nil)

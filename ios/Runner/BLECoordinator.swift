@@ -22,12 +22,14 @@ final class BLECoordinator: NSObject {
   override init() {
     super.init()
     
-    central.onEncounter = { [weak self] peripheral, teaser, rssi in
+    central.onEncounter = { [weak self] peripheral, senderId, teaser, rssi in
       guard let self = self else { return }
+      guard !teaser.isEmpty else { return }
       self.peripheralCache[peripheral.identifier] = peripheral
       self.onEncounterEvent?([
         "type": "encounter",
         "peerId": peripheral.identifier.uuidString,
+        "senderId": Int(senderId),
         "teaser": teaser,
         "rssi": rssi
       ])
@@ -61,10 +63,20 @@ final class BLECoordinator: NSObject {
   }
 
   func startVenueMode() {
+    guard !myTeaser.isEmpty else {
+      startReceiveOnly()
+      return
+    }
     peripheral.setContent(teaser: myTeaser, body: myBody)
     peripheral.start()
     central.startScan()
     addLog("APP", "venue ON")
+  }
+
+  func startReceiveOnly() {
+    peripheral.stop()
+    central.startScan()
+    addLog("APP", "receive-only ON")
   }
 
   func stopVenueMode() {

@@ -19,7 +19,7 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
   private let log: (String, String) -> Void
 
   // 発見データ: UUID(peerId), Teaser, RSSI, CBPeripheral
-  var onEncounter: ((CBPeripheral, String, Int) -> Void)?
+  var onEncounter: ((CBPeripheral, UInt32, String, Int) -> Void)?
 
   // 本文受信
   var onStatus: ((RequestStatus, String?) -> Void)?
@@ -34,6 +34,7 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
   private var timeoutTimer: DispatchSourceTimer?
   private var retryLeft: Int = 1
   private var shouldScanWhenPoweredOn: Bool = false
+  private var resumeScanAfterRequest: Bool = false
 
   init(log: @escaping (String, String) -> Void) {
     self.log = log
@@ -45,6 +46,10 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     guard cm.state == .poweredOn else {
       shouldScanWhenPoweredOn = true
       log("CENTRAL", "Bluetooth not poweredOn yet")
+      return
+    }
+    if cm.isScanning {
+      log("SCAN", "already scanning")
       return
     }
     cm.scanForPeripherals(withServices: [GATTProfile.serviceUUID], options: [
@@ -61,13 +66,18 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
 
   func requestBody(peripheral: CBPeripheral) {
     log("CENTRAL", "requestBody called for peerId=\(peripheral.identifier)")
+    retryLeft = 1
+    targetPeripheral = peripheral
+    resumeScanAfterRequest = cm.isScanning
+    if cm.isScanning {
+      cm.stopScan()
+      log("SCAN", "pause scan for body request")
+    }
     connect(peripheral)
   }
 
   private func connect(_ peripheral: CBPeripheral) {
     resetRequestState()
-    retryLeft = 1
-    targetPeripheral = peripheral
     targetPeripheral?.delegate = self
     onStatus?(.connecting, nil)
     cm.connect(peripheral, options: nil)
@@ -102,6 +112,7 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
   }
 
   private func failOrRetry(_ reason: String) {
+    stopTimeout()
     if retryLeft > 0, let p = targetPeripheral {
       retryLeft -= 1
       log("CENTRAL", "retry \(retryLeft) reason=\(reason)")
@@ -114,7 +125,15 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
       if let p = targetPeripheral {
         cm.cancelPeripheralConnection(p)
       }
-      stopTimeout()
+      finishRequest()
+    }
+  }
+
+  private func finishRequest() {
+    targetPeripheral = nil
+    if resumeScanAfterRequest {
+      resumeScanAfterRequest = false
+      startScan()
     }
   }
 
@@ -145,8 +164,10 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
       return
     }
 
-    guard let payload = payload, let decoded = PayloadCodec.decodeAdvert(payload) else { return }
-    onEncounter?(peripheral, decoded.teaser, RSSI.intValue)
+    guard let payload = payload,
+          let decoded = PayloadCodec.decodeAdvert(payload),
+          !decoded.teaser.isEmpty else { return }
+    onEncounter?(peripheral, decoded.senderId, decoded.teaser, RSSI.intValue)
   }
 
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -238,6 +259,7 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
       onPreview?(preview)
       onStatus?(.completed, nil)
       cm.cancelPeripheralConnection(peripheral)
+      finishRequest()
     }
   }
 }
