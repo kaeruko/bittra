@@ -83,3 +83,17 @@ class RequestLog {
     );
   }
 }
+
+class SentNotice {
+  final String id;
+  final String teaser;
+  final String body;
+  final DateTime sentAt;
+
+  const SentNotice({
+    required this.id,
+    required this.teaser,
+    required this.body,
+    required this.sentAt,
+  });
+}
