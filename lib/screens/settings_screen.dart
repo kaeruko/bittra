@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../providers/mock_data_provider.dart';
 import '../services/database_service.dart';
 
@@ -86,19 +85,18 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         children: [
           SwitchListTile(
-            title: const Text('会場モード'),
+            title: const Text('Bluetooth通信'),
             subtitle: Text(
               activeVenue.isBroadcasting
                   ? activeVenue.isSending
-                        ? 'Bluetoothで送受信しています'
-                        : 'Bluetoothで受信しています（投稿すると送信も始まります）'
-                  : 'ONにするとBluetoothで受信を始めます',
+                        ? '近くのお知らせを受信し、この投稿を送信しています'
+                        : '近くのお知らせを自動で受信します'
+                  : '送受信を停止しています',
             ),
             value: activeVenue.isBroadcasting,
             onChanged: (val) {
               if (val) {
                 ref.read(activeVenueProvider.notifier).startReceiveOnly();
-                context.go('/');
               } else {
                 ref.read(activeVenueProvider.notifier).stop();
               }
