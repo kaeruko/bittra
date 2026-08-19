@@ -16,7 +16,7 @@ class DatabaseService {
     final path = join(dir.path, 'bittora.db');
     return openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE encounters (
@@ -41,8 +41,25 @@ class DatabaseService {
             error TEXT
           )
         ''');
+        await _createSentNoticesTable(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await _createSentNoticesTable(db);
+        }
       },
     );
+  }
+
+  Future<void> _createSentNoticesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE sent_notices (
+        id TEXT PRIMARY KEY,
+        teaser TEXT NOT NULL,
+        body TEXT NOT NULL,
+        sentAt INTEGER NOT NULL
+      )
+    ''');
   }
 
   // --- Encounter ---
@@ -79,10 +96,28 @@ class DatabaseService {
     );
   }
 
+  // --- SentNotice ---
+
+  Future<List<SentNotice>> loadSentNotices() async {
+    final db = await database;
+    final rows = await db.query('sent_notices', orderBy: 'sentAt DESC');
+    return rows.map(_rowToSentNotice).toList();
+  }
+
+  Future<void> insertSentNotice(SentNotice notice) async {
+    final db = await database;
+    await db.insert(
+      'sent_notices',
+      _sentNoticeToRow(notice),
+      conflictAlgorithm: ConflictAlgorithm.abort,
+    );
+  }
+
   Future<void> deleteAll() async {
     final db = await database;
     await db.delete('request_logs');
     await db.delete('encounters');
+    await db.delete('sent_notices');
   }
 
   // --- Mappers ---
@@ -129,6 +164,20 @@ class DatabaseService {
         : null,
     body: row['body'] as String?,
     error: row['error'] as String?,
+  );
+
+  Map<String, dynamic> _sentNoticeToRow(SentNotice notice) => {
+    'id': notice.id,
+    'teaser': notice.teaser,
+    'body': notice.body,
+    'sentAt': notice.sentAt.millisecondsSinceEpoch,
+  };
+
+  SentNotice _rowToSentNotice(Map<String, dynamic> row) => SentNotice(
+    id: row['id'] as String,
+    teaser: row['teaser'] as String,
+    body: row['body'] as String,
+    sentAt: DateTime.fromMillisecondsSinceEpoch(row['sentAt'] as int),
   );
 }
 
