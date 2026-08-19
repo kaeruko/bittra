@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../providers/mock_data_provider.dart';
+import '../providers/sent_notice_history_provider.dart';
 import '../models/bluetooth_models.dart';
 
 class HistoryScreen extends ConsumerWidget {
@@ -12,24 +13,76 @@ class HistoryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final logs = ref.watch(mockRequestLogsProvider);
     final encounters = ref.watch(mockEncountersProvider);
+    final sentNotices = ref.watch(sentNoticeHistoryProvider);
     final receivedLogs = logs
         .where((l) => l.status == RequestStatus.received)
         .toList();
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('受信履歴')),
-      body: receivedLogs.isEmpty
-          ? const Center(child: Text('受信済みのお知らせはありません。'))
-          : ListView.builder(
-              itemCount: receivedLogs.length,
-              itemBuilder: (context, index) {
-                final log = receivedLogs[index];
-                final encounter = encounters
-                    .where((e) => e.id == log.encounterId)
-                    .firstOrNull;
-                return ReceivedNoticeTile(log: log, teaser: encounter?.teaser);
-              },
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('履歴'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: '受信'),
+              Tab(text: '送信'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _ReceivedHistoryList(
+              logs: receivedLogs,
+              encounters: encounters,
             ),
+            _SentHistoryList(notices: sentNotices),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReceivedHistoryList extends StatelessWidget {
+  final List<RequestLog> logs;
+  final List<Encounter> encounters;
+
+  const _ReceivedHistoryList({required this.logs, required this.encounters});
+
+  @override
+  Widget build(BuildContext context) {
+    if (logs.isEmpty) {
+      return const Center(child: Text('受信済みのお知らせはありません。'));
+    }
+
+    return ListView.builder(
+      itemCount: logs.length,
+      itemBuilder: (context, index) {
+        final log = logs[index];
+        final encounter = encounters
+            .where((e) => e.id == log.encounterId)
+            .firstOrNull;
+        return ReceivedNoticeTile(log: log, teaser: encounter?.teaser);
+      },
+    );
+  }
+}
+
+class _SentHistoryList extends StatelessWidget {
+  final List<SentNotice> notices;
+
+  const _SentHistoryList({required this.notices});
+
+  @override
+  Widget build(BuildContext context) {
+    if (notices.isEmpty) {
+      return const Center(child: Text('送信したお知らせはありません。'));
+    }
+
+    return ListView.builder(
+      itemCount: notices.length,
+      itemBuilder: (context, index) => SentNoticeTile(notice: notices[index]),
     );
   }
 }
@@ -82,6 +135,56 @@ class ReceivedNoticeTile extends StatelessWidget {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class SentNoticeTile extends StatelessWidget {
+  final SentNotice notice;
+
+  const SentNoticeTile({super.key, required this.notice});
+
+  @override
+  Widget build(BuildContext context) {
+    final format = DateFormat('MM/dd HH:mm');
+    final bodyPreview = notice.body.isNotEmpty
+        ? notice.body.replaceAll('\n', ' ')
+        : null;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Icon(Icons.upload_rounded, size: 18),
+                Text(
+                  format.format(notice.sentAt),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(notice.teaser, style: Theme.of(context).textTheme.titleMedium),
+            if (bodyPreview != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                bodyPreview,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ],
         ),
       ),
     );
