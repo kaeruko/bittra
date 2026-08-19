@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/mock_data_provider.dart';
+import '../providers/sent_notice_history_provider.dart';
 
 class ComposeScreen extends ConsumerStatefulWidget {
   const ComposeScreen({super.key});
@@ -14,6 +15,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   final _formKey = GlobalKey<FormState>();
   final _teaserController = TextEditingController();
   final _bodyController = TextEditingController();
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -34,17 +36,31 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
     super.dispose();
   }
 
-  void _submit() {
-    if (_formKey.currentState!.validate()) {
-      final teaser = _teaserController.text;
-      final body = _bodyController.text;
+  Future<void> _submit() async {
+    if (_isSubmitting || !_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final teaser = _teaserController.text;
+    final body = _bodyController.text;
+
+    setState(() => _isSubmitting = true);
+    try {
+      await ref
+          .read(sentNoticeHistoryProvider.notifier)
+          .addSentNotice(teaser: teaser, body: body);
 
       ref.read(activeVenueProvider.notifier).start(teaser, body);
 
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('おしらせを流しました')));
       context.go('/');
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
   }
 
@@ -107,9 +123,15 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
             ),
             const SizedBox(height: 32),
             FilledButton.icon(
-              onPressed: _submit,
-              icon: const Icon(Icons.podcasts),
-              label: const Text('おしらせ！'),
+              onPressed: _isSubmitting ? null : _submit,
+              icon: _isSubmitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.podcasts),
+              label: Text(_isSubmitting ? '保存中…' : 'おしらせ！'),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
