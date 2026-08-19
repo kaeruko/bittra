@@ -236,7 +236,7 @@ class VenueState {
 
 @riverpod
 class ActiveVenue extends _$ActiveVenue {
-  static const _keyBroadcasting = 'venue_broadcasting';
+  static const _keyBluetoothEnabled = 'bluetooth_enabled';
   static const _keySending = 'venue_sending';
   static const _keyTeaser = 'venue_teaser';
   static const _keyBody = 'venue_body';
@@ -251,10 +251,9 @@ class ActiveVenue extends _$ActiveVenue {
     final prefs = await SharedPreferences.getInstance();
     final teaser = prefs.getString(_keyTeaser);
     final body = prefs.getString(_keyBody) ?? '';
-    final wasBroadcasting = prefs.getBool(_keyBroadcasting) ?? false;
-    // Older builds did not distinguish receive-only from sending. Default to
-    // receive-only so an old draft is never transmitted unexpectedly.
-    final wasSending = prefs.getBool(_keySending) ?? false;
+    // Receive by default. Only a user who explicitly turns Bluetooth off in
+    // settings stays opted out on later launches.
+    final bluetoothEnabled = prefs.getBool(_keyBluetoothEnabled) ?? true;
 
     try {
       state;
@@ -262,23 +261,31 @@ class ActiveVenue extends _$ActiveVenue {
       return;
     }
 
-    if (wasBroadcasting && wasSending && teaser != null && teaser.isNotEmpty) {
+    if (!bluetoothEnabled) {
       state = VenueState(
-        isBroadcasting: true,
-        isSending: true,
+        isBroadcasting: false,
         teaser: teaser,
         body: body,
       );
-      ref.read(bleServiceProvider).startVenueMode(teaser, body);
-    } else if (wasBroadcasting) {
-      state = VenueState(isBroadcasting: true, teaser: teaser, body: body);
-      ref.read(bleServiceProvider).startReceiveOnly();
+      return;
     }
+
+    // Never resume an old outgoing announcement automatically. App launch is
+    // receive-only; posting explicitly starts sending the current announcement.
+    state = VenueState(
+      isBroadcasting: true,
+      isSending: false,
+      teaser: teaser,
+      body: body,
+    );
+    await prefs.setBool(_keyBluetoothEnabled, true);
+    await prefs.setBool(_keySending, false);
+    await ref.read(bleServiceProvider).startReceiveOnly();
   }
 
   Future<void> _save(VenueState s) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyBroadcasting, s.isBroadcasting);
+    await prefs.setBool(_keyBluetoothEnabled, s.isBroadcasting);
     await prefs.setBool(_keySending, s.isSending);
     if (s.teaser != null) await prefs.setString(_keyTeaser, s.teaser!);
     if (s.body != null) await prefs.setString(_keyBody, s.body!);
