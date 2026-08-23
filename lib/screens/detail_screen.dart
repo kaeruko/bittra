@@ -48,20 +48,9 @@ class DetailScreen extends ConsumerWidget {
     } else {
       final text = log.body ?? '';
       final urlMatch = _urlRegex.firstMatch(text);
-      if (urlMatch != null) {
-        final url = urlMatch.group(0)!;
-        body = _BodyWithWebView(text: text, url: url);
-      } else {
-        body = text.isEmpty
-            ? const Center(child: Text('本文はありません'))
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(16.0),
-                child: SelectableText(
-                  text,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              );
-      }
+      body = text.isEmpty
+          ? const Center(child: Text('本文はありません'))
+          : _ReceivedBody(text: text, url: urlMatch?.group(0));
     }
 
     return Scaffold(
@@ -71,51 +60,80 @@ class DetailScreen extends ConsumerWidget {
   }
 }
 
-class _BodyWithWebView extends StatefulWidget {
+class _ReceivedBody extends StatelessWidget {
   final String text;
-  final String url;
+  final String? url;
 
-  const _BodyWithWebView({required this.text, required this.url});
+  const _ReceivedBody({required this.text, this.url});
 
   @override
-  State<_BodyWithWebView> createState() => _BodyWithWebViewState();
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText(text, style: Theme.of(context).textTheme.bodyLarge),
+          if (url != null) ...[
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => _WebViewScreen(url: url!),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.open_in_browser),
+              label: const Text('リンクを開く'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
-class _BodyWithWebViewState extends State<_BodyWithWebView> {
+class _WebViewScreen extends StatefulWidget {
+  final String url;
+
+  const _WebViewScreen({required this.url});
+
+  @override
+  State<_WebViewScreen> createState() => _WebViewScreenState();
+}
+
+class _WebViewScreenState extends State<_WebViewScreen> {
   late final WebViewController _controller;
-  bool _showText = false;
+  int _progress = 0;
 
   @override
   void initState() {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onProgress: (progress) {
+            if (mounted) setState(() => _progress = progress);
+          },
+        ),
+      )
       ..loadRequest(Uri.parse(widget.url));
   }
 
   @override
   Widget build(BuildContext context) {
-    final isOnlyUrl = widget.text.trim() == widget.url.trim();
-
-    if (isOnlyUrl) {
-      return WebViewWidget(controller: _controller);
-    }
-
-    return Column(
-      children: [
-        if (_showText)
-          Container(
-            color: Colors.grey.shade100,
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            child: Text(widget.text, style: const TextStyle(fontSize: 14)),
-          ),
-        TextButton(
-          onPressed: () => setState(() => _showText = !_showText),
-          child: Text(_showText ? 'テキストを隠す' : 'テキストを表示'),
-        ),
-        Expanded(child: WebViewWidget(controller: _controller)),
-      ],
+    return Scaffold(
+      appBar: AppBar(title: const Text('リンク')),
+      body: Stack(
+        children: [
+          WebViewWidget(controller: _controller),
+          if (_progress < 100) LinearProgressIndicator(value: _progress / 100),
+        ],
+      ),
     );
   }
 }
