@@ -132,6 +132,10 @@ final class BLECoordinator: NSObject {
   }
 
   func addLog(_ tag: String, _ msg: String) {
+    // Keep BLE diagnostics visible in `flutter run` / Xcode console as well as
+    // forwarding them to Flutter. This is intentionally diagnostic-only and
+    // does not change BLE behavior.
+    print("[BITTRA-BLE][\(tag)] \(msg)")
     onLogEvent?([
       "type": "log",
       "tag": tag,
