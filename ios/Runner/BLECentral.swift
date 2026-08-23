@@ -159,32 +159,35 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
       "didDiscover id=\(peripheral.identifier) rssi=\(RSSI) name=\(advertisedName) keys=[\(keys)]"
     )
 
-    // Android peripheral: payload in manufacturer specific data (skip 2-byte company ID)
-    // iOS peripheral: payload in localName (base64-encoded, CoreBluetooth limitation)
-    let payload: Data?
+    // Android peripheral: binary payload in manufacturer specific data (skip
+    // the 2-byte company ID). iOS peripheral: compact teaser in localName.
+    let decoded: (senderId: UInt32, teaser: String)?
     if let mfgData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data, mfgData.count > 2 {
-      payload = Data(mfgData.dropFirst(2))
+      let payload = Data(mfgData.dropFirst(2))
+      decoded = PayloadCodec.decodeAdvert(payload)
       log(
         "SCAN",
         "payload source=manufacturer totalBytes=\(mfgData.count) payloadBytes=\(mfgData.count - 2)"
       )
     } else if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
-      if let data = Data(base64Encoded: localName) {
-        payload = data
+      if let compact = PayloadCodec.decodeLocalName(localName) {
+        decoded = compact
+        log("SCAN", "payload source=compactLocalName bytes=\(localName.utf8.count)")
+      } else if let data = Data(base64Encoded: localName) {
+        // Backward compatibility for the previous Base64 local-name format.
+        decoded = PayloadCodec.decodeAdvert(data)
         log("SCAN", "payload source=localName base64Chars=\(localName.count) payloadBytes=\(data.count)")
       } else {
-        payload = nil
-        log("SCAN", "skip id=\(peripheral.identifier) localName is not valid base64: \(localName)")
+        decoded = nil
+        log("SCAN", "skip id=\(peripheral.identifier) unknown localName format: \(localName)")
       }
     } else {
-      payload = nil
+      decoded = nil
       log("SCAN", "skip id=\(peripheral.identifier) no manufacturerData/localName payload")
     }
 
-    guard let payload = payload else { return }
-    guard let decoded = PayloadCodec.decodeAdvert(payload) else {
-      let prefix = payload.base64EncodedString().prefix(32)
-      log("SCAN", "skip id=\(peripheral.identifier) advert decode failed bytes=\(payload.count) b64prefix=\(prefix)")
+    guard let decoded = decoded else {
+      log("SCAN", "skip id=\(peripheral.identifier) advert decode failed")
       return
     }
     guard !decoded.teaser.isEmpty else {

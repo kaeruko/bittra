@@ -105,14 +105,16 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
   }
 
   private func startAdvertising() {
-    let payload = PayloadCodec.encodeAdvert(teaser: myTeaser, nonce: senderId)
-    let payloadString = payload.base64EncodedString()
+    let localName = PayloadCodec.encodeLocalName(teaser: myTeaser, senderId: senderId)
 
     pm.startAdvertising([
       CBAdvertisementDataServiceUUIDsKey: [GATTProfile.serviceUUID],
-      CBAdvertisementDataLocalNameKey: payloadString
+      CBAdvertisementDataLocalNameKey: localName
     ])
-    log("ADV", "startAdvertising teaser=\(PayloadCodec.normalizeTeaser(myTeaser)) bytes=\(payload.count)")
+    log(
+      "ADV",
+      "startAdvertising requested teaser=\(PayloadCodec.normalizeTeaser(myTeaser)) localNameBytes=\(localName.utf8.count)"
+    )
   }
 
   // MARK: - CBPeripheralManagerDelegate
@@ -135,6 +137,15 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
     if isGattServiceReady && startAdvertisingWhenReady {
       startAdvertisingWhenReady = false
       startAdvertising()
+    }
+  }
+
+  func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager,
+                                             error: Error?) {
+    if let error = error {
+      log("ADV", "startAdvertising failed error=\(error.localizedDescription)")
+    } else {
+      log("ADV", "startAdvertising success")
     }
   }
 
