@@ -20,6 +20,8 @@ class BleService {
         _handleNativeEvent(event);
       },
       onError: (error) {
+        // ignore: avoid_print
+        print('[BITTRA-BLE][FLUTTER] event channel error: $error');
         log('BleService: Intercepted error from event channel: $error');
       },
     );
@@ -35,7 +37,9 @@ class BleService {
         final rssi = event['rssi'] as int;
 
         // ignore: avoid_print
-        print('[BLE] encounter peerId=$peerId teaser=$teaser rssi=$rssi');
+        print(
+          '[BITTRA-BLE][ENCOUNTER] peerId=$peerId senderId=$senderId teaser=$teaser rssi=$rssi',
+        );
         // Push this data to the Provider (replacing mock with real logic eventually)
         ref
             .read(mockEncountersProvider.notifier)
@@ -51,6 +55,10 @@ class BleService {
         final peerId = event['peerId'] as String;
         final statusStr = event['status'] as String;
         final error = event['error'] as String?;
+        // ignore: avoid_print
+        print(
+          '[BITTRA-BLE][STATUS] peerId=$peerId status=$statusStr error=${error ?? ''}',
+        );
         // Convert string to enum
         RequestStatus reqStatus = RequestStatus.requested;
         switch (statusStr) {
@@ -82,6 +90,10 @@ class BleService {
         final peerId = event['peerId'] as String;
         final preview = event['preview'] as String?;
         final body = event['body'] as String?;
+        // ignore: avoid_print
+        print(
+          '[BITTRA-BLE][BODY] peerId=$peerId previewChars=${preview?.length ?? 0} bodyChars=${body?.length ?? 0}',
+        );
 
         if (body != null) {
           ref
@@ -93,10 +105,16 @@ class BleService {
       case 'log':
         final tag = event['tag'] as String? ?? '';
         final message = event['message'] as String? ?? '';
+        // `print` is intentional here so BLE diagnostics are always visible in
+        // the terminal used for `flutter run` on a physical iOS device.
+        // ignore: avoid_print
+        print('[BITTRA-BLE][$tag] $message');
         log('[$tag] $message');
         break;
 
       default:
+        // ignore: avoid_print
+        print('[BITTRA-BLE][FLUTTER] unknown event type=$type event=$event');
         log('BleService: Received unknown event type: $type');
     }
   }
@@ -107,6 +125,8 @@ class BleService {
       await BleBridge.setBody(bodyText);
       await BleBridge.startVenueMode();
     } on PlatformException catch (e) {
+      // ignore: avoid_print
+      print('[BITTRA-BLE][FLUTTER] startVenueMode failed: ${e.message}');
       log('Failed to start venue mode: ${e.message}');
     }
   }
@@ -115,6 +135,8 @@ class BleService {
     try {
       await BleBridge.startReceiveOnly();
     } on PlatformException catch (e) {
+      // ignore: avoid_print
+      print('[BITTRA-BLE][FLUTTER] startReceiveOnly failed: ${e.message}');
       log('Failed to start receive-only mode: ${e.message}');
     }
   }
@@ -123,6 +145,8 @@ class BleService {
     try {
       await BleBridge.stopVenueMode();
     } on PlatformException catch (e) {
+      // ignore: avoid_print
+      print('[BITTRA-BLE][FLUTTER] stopVenueMode failed: ${e.message}');
       log('Failed to stop venue mode: ${e.message}');
     }
   }
@@ -131,6 +155,8 @@ class BleService {
     try {
       await BleBridge.requestBody(peerId);
     } on PlatformException catch (e) {
+      // ignore: avoid_print
+      print('[BITTRA-BLE][FLUTTER] requestFullText failed: ${e.message}');
       log('Failed to request full text: ${e.message}');
     }
   }
