@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/mock_data_provider.dart';
+import '../providers/sent_notice_history_provider.dart';
 import '../services/database_service.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -149,6 +150,7 @@ class SettingsScreen extends ConsumerWidget {
                         await databaseServiceProvider.deleteAll();
                         ref.invalidate(mockRequestLogsProvider);
                         ref.invalidate(mockEncountersProvider);
+                        ref.invalidate(sentNoticeHistoryProvider);
                         if (context.mounted) {
                           Navigator.of(context).pop();
                           ScaffoldMessenger.of(context).showSnackBar(

@@ -115,9 +115,11 @@ class DatabaseService {
 
   Future<void> deleteAll() async {
     final db = await database;
-    await db.delete('request_logs');
-    await db.delete('encounters');
-    await db.delete('sent_notices');
+    await db.transaction((transaction) async {
+      await transaction.delete('request_logs');
+      await transaction.delete('encounters');
+      await transaction.delete('sent_notices');
+    });
   }
 
   // --- Mappers ---
