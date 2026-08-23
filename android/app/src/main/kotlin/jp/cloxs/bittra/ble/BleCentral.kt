@@ -52,47 +52,51 @@ class BleCentral(private val context: Context, private val log: (String, String)
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val record = result.scanRecord ?: return
 
-            // Android peripheral: payload in manufacturer specific data
-            // iOS peripheral (foreground): payload often in service data
-            // iOS peripheral (background/fallback): payload in localName
+            // Android peripheral: payload in manufacturer specific data.
+            // Current iOS peripheral: compact teaser in localName. Keep service
+            // data and legacy Base64 local-name decoding for older builds.
             val mfgData = record.getManufacturerSpecificData(GATTProfile.MANUFACTURER_ID)
             val srvData = record.serviceData[ParcelUuid(GATTProfile.SERVICE_UUID)]
             
             // Log exactly what we see for debugging iOS discoveries
             android.util.Log.d("BleCentral", "ScanResult for ${result.device.address}: name=${record.deviceName}, mfgData=${mfgData?.size}, srvData=${srvData?.size}, srvUuids=${record.serviceUuids}")
 
-            val payload: ByteArray? = if (mfgData != null && mfgData.isNotEmpty()) {
-                mfgData
+            val decoded = if (mfgData != null && mfgData.isNotEmpty()) {
+                PayloadCodec.decodeAdvert(mfgData)
             } else if (srvData != null && srvData.isNotEmpty()) {
-                srvData
+                PayloadCodec.decodeAdvert(srvData)
             } else {
                 val localName = record.deviceName
                 if (localName != null) {
-                    var decodedData: ByteArray? = null
-                    var tempName: String = localName
-                    
-                    // CoreBluetooth cuts the device name strictly at byte limits, which often corrupts 
-                    // the last 1-3 characters of a Base64 string. We trim up to 4 characters from the end 
-                    // until we find a valid Base64 boundary.
-                    for (i in 0 until 4) {
-                        if (tempName.isEmpty()) break
-                        try {
-                            val padded = tempName.padEnd(tempName.length + (4 - tempName.length % 4) % 4, '=')
-                            decodedData = android.util.Base64.decode(padded, android.util.Base64.DEFAULT)
-                            break
-                        } catch (e: Exception) {
-                            tempName = tempName.substring(0, tempName.length - 1)
+                    val compactResult = PayloadCodec.decodeLocalName(localName)
+                    if (compactResult != null) {
+                        compactResult
+                    } else {
+                        var legacyResult: PayloadCodec.AdvertResult? = null
+                        var tempName: String = localName
+
+                        // Backward compatibility for the previous Base64
+                        // local-name representation.
+                        for (i in 0 until 4) {
+                            if (tempName.isEmpty()) break
+                            try {
+                                val padded = tempName.padEnd(tempName.length + (4 - tempName.length % 4) % 4, '=')
+                                val decodedData = android.util.Base64.decode(padded, android.util.Base64.DEFAULT)
+                                legacyResult = PayloadCodec.decodeAdvert(decodedData)
+                                if (legacyResult != null) break
+                            } catch (_: IllegalArgumentException) {
+                                // Try again without the possibly truncated tail.
+                            }
+                            tempName = tempName.dropLast(1)
                         }
+                        legacyResult
                     }
-                    decodedData
                 } else {
                     null
                 }
             }
-            
-            if (payload == null) return
 
-            val decoded = PayloadCodec.decodeAdvert(payload) ?: return
+            if (decoded == null) return
             if (decoded.teaser.isEmpty()) return
             onEncounter?.invoke(result.device, decoded.senderId, decoded.teaser, result.rssi)
         }

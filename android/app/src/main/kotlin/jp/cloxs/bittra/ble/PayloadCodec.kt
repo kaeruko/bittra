@@ -4,6 +4,9 @@ import java.nio.charset.StandardCharsets
 import java.text.Normalizer
 
 object PayloadCodec {
+
+    private const val COMPACT_LOCAL_NAME_PREFIX = "~"
+    private const val COMPACT_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
     
     fun normalizeTeaser(input: String): String {
         // 1) trim
@@ -51,6 +54,21 @@ object PayloadCodec {
         data[6 + teaserLength] = ((senderId shr 24) and 0xFF).toByte()
         
         return data
+    }
+
+    fun decodeLocalName(localName: String): AdvertResult? {
+        if (!localName.startsWith(COMPACT_LOCAL_NAME_PREFIX)) return null
+        val encoded = localName.drop(1)
+        if (encoded.length < 3) return null
+
+        val high = COMPACT_ID_ALPHABET.indexOf(encoded[0])
+        val middle = COMPACT_ID_ALPHABET.indexOf(encoded[1])
+        val low = COMPACT_ID_ALPHABET.indexOf(encoded[2])
+        if (high !in 0..15 || middle < 0 || low < 0) return null
+
+        val senderId = ((high shl 12) or (middle shl 6) or low).toLong()
+        val teaser = normalizeTeaser(encoded.drop(3))
+        return if (teaser.isEmpty()) null else AdvertResult(senderId, teaser)
     }
     
     data class AdvertResult(val senderId: Long, val teaser: String)

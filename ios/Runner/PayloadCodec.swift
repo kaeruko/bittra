@@ -2,6 +2,13 @@ import Foundation
 
 enum PayloadCodec {
 
+  // iOS only lets peripheral apps advertise service UUIDs and a local name.
+  // Keep the iOS local-name representation compact enough to coexist with the
+  // 128-bit Bittra service UUID. The binary format remains in use for Android
+  // manufacturer data and for decoding older senders.
+  private static let compactLocalNamePrefix = "~"
+  private static let compactIdAlphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+
   static func normalizeTeaser(_ input: String) -> String {
     // 1) trim
     var s = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -17,7 +24,7 @@ enum PayloadCodec {
     // 4) UI的に8文字固定
     if s.count > 8 { s = String(s.prefix(8)) }
 
-    // 5) UTF-8バイトで安全に切る（最大18B）
+    // 5) UTF-8バイトで安全に切る（最大16B）
     s = clipUTF8ToMaxBytes(s, maxBytes: GATTProfile.maxTeaserUTF8Bytes)
     return s
   }
@@ -38,6 +45,32 @@ enum PayloadCodec {
     // teaser
     data.append(teaserBytes)
     return data
+  }
+
+  static func encodeLocalName(teaser: String, senderId: UInt16) -> String {
+    let encodedId = String([
+      compactIdAlphabet[Int((senderId >> 12) & 0x0F)],
+      compactIdAlphabet[Int((senderId >> 6) & 0x3F)],
+      compactIdAlphabet[Int(senderId & 0x3F)]
+    ])
+    return compactLocalNamePrefix + encodedId + normalizeTeaser(teaser)
+  }
+
+  static func decodeLocalName(_ localName: String) -> (senderId: UInt32, teaser: String)? {
+    guard localName.hasPrefix(compactLocalNamePrefix) else { return nil }
+    let encoded = localName.dropFirst()
+    guard encoded.count >= 3 else { return nil }
+
+    let idCharacters = Array(encoded.prefix(3))
+    guard
+      let high = compactIdAlphabet.firstIndex(of: idCharacters[0]), high < 16,
+      let middle = compactIdAlphabet.firstIndex(of: idCharacters[1]),
+      let low = compactIdAlphabet.firstIndex(of: idCharacters[2])
+    else { return nil }
+
+    let senderId = UInt32((high << 12) | (middle << 6) | low)
+    let teaser = normalizeTeaser(String(encoded.dropFirst(3)))
+    return teaser.isEmpty ? nil : (senderId, teaser)
   }
 
   static func decodeAdvert(_ data: Data) -> (senderId: UInt32, teaser: String)? {
