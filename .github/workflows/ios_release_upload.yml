@@ -1,18 +1,11 @@
 name: iOS App Store Upload
+run-name: iOS App Store Upload from build run ${{ inputs.source_run_id }}
 
 on:
   workflow_dispatch:
     inputs:
       source_run_id:
         description: "Successful iOS App Store Build run ID"
-        required: true
-        type: string
-      build_name:
-        description: "App Store version used by the source build"
-        required: true
-        type: string
-      build_number:
-        description: "App Store build number used by the source build"
         required: true
         type: string
 
@@ -49,8 +42,6 @@ jobs:
         shell: bash
         env:
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
-          BUILD_NAME: ${{ inputs.build_name }}
-          BUILD_NUMBER: ${{ inputs.build_number }}
           API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
@@ -58,8 +49,6 @@ jobs:
           set -euo pipefail
 
           [[ "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::source_run_id must be a positive integer. Got: $SOURCE_RUN_ID"; exit 1; }
-          [[ "$BUILD_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::build_name must have exactly three numeric components such as 1.0.0. Got: $BUILD_NAME"; exit 1; }
-          [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "::error::build_number must be a positive integer. Got: $BUILD_NUMBER"; exit 1; }
 
           [[ -n "$API_KEY_ID" ]] || { echo "::error::Missing secret APP_STORE_CONNECT_API_KEY_ID"; exit 1; }
           [[ -n "$ISSUER_ID" ]] || { echo "::error::Missing secret APP_STORE_CONNECT_ISSUER_ID"; exit 1; }
@@ -68,7 +57,8 @@ jobs:
       - name: Download signed IPA from exact successful build run
         uses: actions/download-artifact@v4
         with:
-          name: bittra-ios-${{ inputs.build_name }}-${{ inputs.build_number }}
+          pattern: bittra-ios-*
+          merge-multiple: true
           path: ${{ runner.temp }}/ipa
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -76,9 +66,6 @@ jobs:
 
       - name: Verify downloaded IPA before upload
         shell: bash
-        env:
-          BUILD_NAME: ${{ inputs.build_name }}
-          BUILD_NUMBER: ${{ inputs.build_number }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -102,8 +89,8 @@ jobs:
 
           [[ "$ACTUAL_BUNDLE_ID" == "$BUNDLE_ID" ]] || { echo "::error::Bundle id mismatch: $ACTUAL_BUNDLE_ID"; exit 1; }
           [[ "$ACTUAL_DISPLAY_NAME" == "$DISPLAY_NAME" ]] || { echo "::error::Display name mismatch: $ACTUAL_DISPLAY_NAME"; exit 1; }
-          [[ "$ACTUAL_BUILD_NAME" == "$BUILD_NAME" ]] || { echo "::error::Version mismatch. Expected $BUILD_NAME, got $ACTUAL_BUILD_NAME"; exit 1; }
-          [[ "$ACTUAL_BUILD_NUMBER" == "$BUILD_NUMBER" ]] || { echo "::error::Build number mismatch. Expected $BUILD_NUMBER, got $ACTUAL_BUILD_NUMBER"; exit 1; }
+          [[ "$ACTUAL_BUILD_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid version in IPA: $ACTUAL_BUILD_NAME"; exit 1; }
+          [[ "$ACTUAL_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "::error::Invalid build number in IPA: $ACTUAL_BUILD_NUMBER"; exit 1; }
           [[ -n "$BLUETOOTH_USAGE" ]] || { echo "::error::NSBluetoothAlwaysUsageDescription is missing"; exit 1; }
 
           codesign --verify --deep --strict --verbose=2 "$APP_DIR"

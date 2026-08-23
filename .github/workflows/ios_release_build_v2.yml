@@ -1,14 +1,11 @@
 name: iOS App Store Build
+run-name: iOS App Store Build ${{ inputs.build_name }} (${{ github.run_number }})
 
 on:
   workflow_dispatch:
     inputs:
       build_name:
         description: "App Store version, for example 1.0.0"
-        required: true
-        type: string
-      build_number:
-        description: "Unique App Store build number"
         required: true
         type: string
 
@@ -56,7 +53,7 @@ jobs:
         shell: bash
         env:
           BUILD_NAME: ${{ inputs.build_name }}
-          BUILD_NUMBER: ${{ inputs.build_number }}
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
 
@@ -183,7 +180,7 @@ jobs:
         shell: bash
         env:
           BUILD_NAME: ${{ inputs.build_name }}
-          BUILD_NUMBER: ${{ inputs.build_number }}
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
           flutter --version
@@ -243,7 +240,7 @@ jobs:
         shell: bash
         env:
           BUILD_NAME: ${{ inputs.build_name }}
-          BUILD_NUMBER: ${{ inputs.build_number }}
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
           ARCHIVE_PATH="$RUNNER_TEMP/Runner.xcarchive"
@@ -325,7 +322,7 @@ jobs:
         shell: bash
         env:
           BUILD_NAME: ${{ inputs.build_name }}
-          BUILD_NUMBER: ${{ inputs.build_number }}
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
           [[ -f "$IPA_PATH" ]] || { echo "::error::IPA not found: $IPA_PATH"; exit 1; }
@@ -358,7 +355,7 @@ jobs:
       - name: Upload signed IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bittra-ios-${{ inputs.build_name }}-${{ inputs.build_number }}
+          name: bittra-ios-${{ inputs.build_name }}-${{ github.run_number }}
           path: ${{ env.IPA_PATH }}
           if-no-files-found: error
           retention-days: 7
