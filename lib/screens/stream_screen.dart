@@ -1,14 +1,49 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/mock_data_provider.dart';
 import '../models/bluetooth_models.dart';
 
-class StreamScreen extends ConsumerWidget {
-  const StreamScreen({super.key});
+class StreamScreen extends ConsumerStatefulWidget {
+  final DateTime Function()? now;
+
+  const StreamScreen({super.key, this.now});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StreamScreen> createState() => _StreamScreenState();
+}
+
+class _StreamScreenState extends ConsumerState<StreamScreen> {
+  static const _encounterRetention = Duration(minutes: 3);
+  static const _refreshInterval = Duration(seconds: 1);
+
+  late DateTime _now;
+  late final Timer _refreshTimer;
+
+  DateTime _currentTime() => widget.now?.call() ?? DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _now = _currentTime();
+    _refreshTimer = Timer.periodic(_refreshInterval, (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _now = _currentTime());
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final allEncounters = ref.watch(mockEncountersProvider);
     final requestLogs = ref.watch(mockRequestLogsProvider);
     final blockedPeers = ref.watch(blockedPeersProvider);
@@ -22,14 +57,15 @@ class StreamScreen extends ConsumerWidget {
           .map((r) => MapEntry(r.encounterId, r.resolvedAt!)),
     );
 
-    final now = DateTime.now();
     final encounters = allEncounters
         .where((e) {
           final resolvedAt = receivedMap[e.id];
           if (resolvedAt == null) return true;
           return e.lastSeenAt.isAfter(resolvedAt);
         })
-        .where((e) => now.difference(e.lastSeenAt).inMinutes < 3)
+        .where(
+          (e) => _now.difference(e.lastSeenAt) < _encounterRetention,
+        )
         .where((e) => !blockedPeers.contains(e.peerId)) // ブロック済みを除外
         .toList();
     final activeVenue = ref.watch(activeVenueProvider);

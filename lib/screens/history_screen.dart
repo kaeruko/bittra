@@ -5,9 +5,45 @@ import 'package:intl/intl.dart';
 import '../providers/mock_data_provider.dart';
 import '../providers/sent_notice_history_provider.dart';
 import '../models/bluetooth_models.dart';
+import '../services/database_service.dart';
 
 class HistoryScreen extends ConsumerWidget {
   const HistoryScreen({super.key});
+
+  Future<void> _deleteAllHistory(BuildContext context, WidgetRef ref) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('履歴の削除'),
+        content: const Text('受信履歴と送信履歴をすべて削除してもよろしいですか？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('削除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true || !context.mounted) {
+      return;
+    }
+
+    await databaseServiceProvider.deleteAll();
+    ref.invalidate(mockRequestLogsProvider);
+    ref.invalidate(mockEncountersProvider);
+    ref.invalidate(sentNoticeHistoryProvider);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('履歴を削除しました')));
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -23,6 +59,15 @@ class HistoryScreen extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('履歴'),
+          actions: [
+            IconButton(
+              tooltip: '履歴をすべて削除',
+              onPressed: logs.isEmpty && sentNotices.isEmpty
+                  ? null
+                  : () => _deleteAllHistory(context, ref),
+              icon: const Icon(Icons.delete_outline),
+            ),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(text: '受信'),
