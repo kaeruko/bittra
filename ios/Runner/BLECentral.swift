@@ -45,7 +45,7 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
   func startScan() {
     guard cm.state == .poweredOn else {
       shouldScanWhenPoweredOn = true
-      log("CENTRAL", "Bluetooth not poweredOn yet")
+      log("CENTRAL", "Bluetooth not poweredOn yet state=\(cm.state.rawValue)")
       return
     }
     if cm.isScanning {
@@ -55,7 +55,7 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     cm.scanForPeripherals(withServices: [GATTProfile.serviceUUID], options: [
       CBCentralManagerScanOptionAllowDuplicatesKey: true
     ])
-    log("SCAN", "startScan")
+    log("SCAN", "startScan serviceUUID=\(GATTProfile.serviceUUID.uuidString)")
   }
 
   func stopScan() {
@@ -152,37 +152,66 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
                       didDiscover peripheral: CBPeripheral,
                       advertisementData: [String : Any],
                       rssi RSSI: NSNumber) {
+    let keys = advertisementData.keys.sorted().joined(separator: ",")
+    let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? "-"
+    log(
+      "SCAN",
+      "didDiscover id=\(peripheral.identifier) rssi=\(RSSI) name=\(advertisedName) keys=[\(keys)]"
+    )
+
     // Android peripheral: payload in manufacturer specific data (skip 2-byte company ID)
     // iOS peripheral: payload in localName (base64-encoded, CoreBluetooth limitation)
     let payload: Data?
     if let mfgData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data, mfgData.count > 2 {
       payload = Data(mfgData.dropFirst(2))
-    } else if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String,
-              let data = Data(base64Encoded: localName) {
-      payload = data
+      log(
+        "SCAN",
+        "payload source=manufacturer totalBytes=\(mfgData.count) payloadBytes=\(mfgData.count - 2)"
+      )
+    } else if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
+      if let data = Data(base64Encoded: localName) {
+        payload = data
+        log("SCAN", "payload source=localName base64Chars=\(localName.count) payloadBytes=\(data.count)")
+      } else {
+        payload = nil
+        log("SCAN", "skip id=\(peripheral.identifier) localName is not valid base64: \(localName)")
+      }
     } else {
+      payload = nil
+      log("SCAN", "skip id=\(peripheral.identifier) no manufacturerData/localName payload")
+    }
+
+    guard let payload = payload else { return }
+    guard let decoded = PayloadCodec.decodeAdvert(payload) else {
+      let prefix = payload.base64EncodedString().prefix(32)
+      log("SCAN", "skip id=\(peripheral.identifier) advert decode failed bytes=\(payload.count) b64prefix=\(prefix)")
+      return
+    }
+    guard !decoded.teaser.isEmpty else {
+      log("SCAN", "skip id=\(peripheral.identifier) decoded teaser is empty senderId=\(decoded.senderId)")
       return
     }
 
-    guard let payload = payload,
-          let decoded = PayloadCodec.decodeAdvert(payload),
-          !decoded.teaser.isEmpty else { return }
+    log(
+      "SCAN",
+      "encounter id=\(peripheral.identifier) senderId=\(decoded.senderId) teaser=\(decoded.teaser) rssi=\(RSSI.intValue)"
+    )
     onEncounter?(peripheral, decoded.senderId, decoded.teaser, RSSI.intValue)
   }
 
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-    log("CENTRAL", "didConnect")
+    log("CENTRAL", "didConnect id=\(peripheral.identifier)")
     onStatus?(.discovering, nil)
     peripheral.discoverServices([GATTProfile.serviceUUID])
   }
 
   func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-    log("CENTRAL", "didFailToConnect \(error?.localizedDescription ?? "-")")
+    log("CENTRAL", "didFailToConnect id=\(peripheral.identifier) error=\(error?.localizedDescription ?? "-")")
     failOrRetry("connect_failed")
   }
 
   func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-    log("CENTRAL", "didDisconnect \(error?.localizedDescription ?? "-")")
+    log("CENTRAL", "didDisconnect id=\(peripheral.identifier) error=\(error?.localizedDescription ?? "-")")
   }
 
   // MARK: - CBPeripheralDelegate
@@ -194,8 +223,11 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     }
     guard let services = peripheral.services,
           let s = services.first(where: { $0.uuid == GATTProfile.serviceUUID }) else {
+      let found = peripheral.services?.map { $0.uuid.uuidString }.joined(separator: ",") ?? "none"
+      log("CENTRAL", "required service missing found=[\(found)]")
       return failOrRetry("no_service")
     }
+    log("CENTRAL", "service discovered uuid=\(s.uuid.uuidString)")
     peripheral.discoverCharacteristics([GATTProfile.reqCharUUID, GATTProfile.chunkCharUUID], for: s)
   }
 
@@ -204,12 +236,25 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
       log("CENTRAL", "discoverChars error \(e.localizedDescription)")
       return failOrRetry("discover_chars")
     }
-    guard let chars = service.characteristics else { return failOrRetry("no_chars") }
+    guard let chars = service.characteristics else {
+      log("CENTRAL", "no characteristics returned")
+      return failOrRetry("no_chars")
+    }
+    let found = chars.map { $0.uuid.uuidString }.joined(separator: ",")
+    log("CENTRAL", "characteristics discovered [\(found)]")
+
     reqChar = chars.first(where: { $0.uuid == GATTProfile.reqCharUUID })
     chunkChar = chars.first(where: { $0.uuid == GATTProfile.chunkCharUUID })
 
-    guard let reqChar = reqChar, let chunkChar = chunkChar else { return failOrRetry("missing_char") }
+    guard let reqChar = reqChar, let chunkChar = chunkChar else {
+      log(
+        "CENTRAL",
+        "required characteristic missing req=\(self.reqChar != nil) chunk=\(self.chunkChar != nil)"
+      )
+      return failOrRetry("missing_char")
+    }
 
+    log("CENTRAL", "subscribe chunk=\(chunkChar.uuid.uuidString) req=\(reqChar.uuid.uuidString)")
     onStatus?(.subscribing, nil)
     peripheral.setNotifyValue(true, for: chunkChar)
   }
@@ -219,8 +264,12 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
       log("CENTRAL", "notifyState error \(e.localizedDescription)")
       return failOrRetry("notify_fail")
     }
-    guard characteristic.uuid == GATTProfile.chunkCharUUID else { return }
+    guard characteristic.uuid == GATTProfile.chunkCharUUID else {
+      log("CENTRAL", "ignore notify state for unexpected characteristic=\(characteristic.uuid.uuidString)")
+      return
+    }
 
+    log("CENTRAL", "notify enabled=\(characteristic.isNotifying) characteristic=\(characteristic.uuid.uuidString)")
     onStatus?(.requesting, nil)
     // REQ：空リクエスト
     let req = Data([0x01])
@@ -237,17 +286,28 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
       log("CENTRAL", "didUpdateValue error \(e.localizedDescription)")
       return
     }
-    guard characteristic.uuid == GATTProfile.chunkCharUUID,
-          let value = characteristic.value,
-          value.count >= 3 else { return }
+    guard characteristic.uuid == GATTProfile.chunkCharUUID else {
+      log("CENTRAL", "ignore value for unexpected characteristic=\(characteristic.uuid.uuidString)")
+      return
+    }
+    guard let value = characteristic.value else {
+      log("CENTRAL", "chunk update has nil value")
+      return
+    }
+    guard value.count >= 3 else {
+      log("CENTRAL", "chunk too short bytes=\(value.count)")
+      return
+    }
 
     let seq = UInt16(value[0]) | (UInt16(value[1]) << 8)
     let flags = value[2]
     let payload = value.subdata(in: 3..<value.count)
+    log("CENTRAL", "chunk seq=\(seq) flags=0x\(String(flags, radix: 16)) payloadBytes=\(payload.count)")
 
     let (previewReady, completed, fullData) = assembler.addChunk(seq: seq, flags: flags, payload: payload)
 
     if previewReady {
+      log("CENTRAL", "preview ready")
       onStatus?(.receivingPreview, nil)
     }
 
@@ -255,6 +315,7 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
       stopTimeout()
       let s = String(data: fullData, encoding: .utf8) ?? ""
       let preview = String(s.prefix(120))
+      log("CENTRAL", "body completed bytes=\(fullData.count) chars=\(s.count)")
       onBody?(s)
       onPreview?(preview)
       onStatus?(.completed, nil)
