@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/mock_data_provider.dart';
 import '../providers/sent_notice_history_provider.dart';
+import '../services/content_moderation.dart';
 
 class ComposeScreen extends ConsumerStatefulWidget {
   const ComposeScreen({super.key});
@@ -85,6 +86,11 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
+            const Text(
+              '不適切な表現や嫌がらせを目的とした投稿は禁止されています。',
+              style: TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _teaserController,
               decoration: const InputDecoration(
@@ -100,7 +106,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                 if (value.length > 8) {
                   return 'おしらせは8文字以内で入力してください';
                 }
-                return null;
+                return ContentModeration.validate(value);
               },
             ),
             const SizedBox(height: 24),
@@ -118,7 +124,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                 if (value != null && value.length > 300) {
                   return '本文は300文字以内で入力してください';
                 }
-                return null;
+                return ContentModeration.validate(value);
               },
             ),
             const SizedBox(height: 32),
