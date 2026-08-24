@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/mock_data_provider.dart';
 import '../providers/sent_notice_history_provider.dart';
 import '../services/database_service.dart';
+import '../services/support_contact.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -76,6 +77,18 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _openSupport(BuildContext context) async {
+    try {
+      await SupportContact.openContactEmail();
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('メールアプリを開けませんでした: $error')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(mockSettingsProvider);
@@ -129,6 +142,12 @@ class SettingsScreen extends ConsumerWidget {
                     : () => _showBlockedUsersSheet(context, ref, blockedPeers),
               );
             },
+          ),
+          ListTile(
+            leading: const Icon(Icons.contact_support_outlined),
+            title: const Text('運営者へのお問い合わせ'),
+            subtitle: const Text(SupportContact.email),
+            onTap: () => _openSupport(context),
           ),
           const Divider(),
           ListTile(
