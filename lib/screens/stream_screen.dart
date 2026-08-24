@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/mock_data_provider.dart';
 import '../models/bluetooth_models.dart';
+import '../services/support_contact.dart';
 
 class StreamScreen extends ConsumerStatefulWidget {
   final DateTime Function()? now;
@@ -48,7 +49,6 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
     final requestLogs = ref.watch(mockRequestLogsProvider);
     final blockedPeers = ref.watch(blockedPeersProvider);
 
-    // 受信済みのencounterIdとその受信日時のマップ
     final receivedMap = Map.fromEntries(
       requestLogs
           .where(
@@ -66,7 +66,7 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
         .where(
           (e) => _now.difference(e.lastSeenAt) < _encounterRetention,
         )
-        .where((e) => !blockedPeers.contains(e.peerId)) // ブロック済みを除外
+        .where((e) => !blockedPeers.contains(e.peerId))
         .toList();
     final activeVenue = ref.watch(activeVenueProvider);
     final isSending =
@@ -308,6 +308,11 @@ class EncounterCard extends ConsumerWidget {
                       .toList(),
                 ),
               ),
+              const SizedBox(height: 8),
+              const Text(
+                '「報告メールを作成」を押すとメールアプリが開きます。内容を確認して送信してください。',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
             ],
           ),
           actions: [
@@ -319,18 +324,23 @@ class EncounterCard extends ConsumerWidget {
               onPressed: selectedReason == null
                   ? null
                   : () async {
+                      final reason = selectedReason!;
                       Navigator.of(dialogCtx).pop();
-                      // ダミー送信処理（P2Pのためネットワーク送信なし）
-                      await Future.delayed(const Duration(seconds: 1));
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('報告を受け付けました。ご協力ありがとうございます。'),
-                          ),
+                      try {
+                        await SupportContact.openReportEmail(
+                          reason: reason,
+                          peerId: encounter.peerId,
+                          teaser: encounter.teaser,
                         );
+                      } catch (error) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('メールアプリを開けませんでした: $error')),
+                          );
+                        }
                       }
                     },
-              child: const Text('送信'),
+              child: const Text('報告メールを作成'),
             ),
           ],
         ),
