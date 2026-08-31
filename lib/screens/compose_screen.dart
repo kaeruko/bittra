@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/mock_data_provider.dart';
@@ -99,12 +100,14 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
                 helperText: 'びっとらを持ってる周りの人に届きます',
               ),
               maxLength: 8,
+              maxLengthEnforcement: MaxLengthEnforcement.none,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               validator: (value) {
                 if (value == null || value.isEmpty) {
                   return 'おしらせを入力してください';
                 }
                 if (value.length > 8) {
-                  return 'おしらせは8文字以内で入力してください';
+                  return 'おしらせは8文字以内で入力してください（現在${value.length}文字）';
                 }
                 return ContentModeration.validate(value);
               },

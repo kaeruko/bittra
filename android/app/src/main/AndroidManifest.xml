@@ -30,7 +30,7 @@
         android:maxSdkVersion="30" />
 
     <application
-        android:label="bittora"
+        android:label="びっとら"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">
