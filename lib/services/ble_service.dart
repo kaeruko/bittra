@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../ble_bridge.dart';
 import '../models/bluetooth_models.dart';
 import '../providers/mock_data_provider.dart';
+import '../providers/sent_notice_history_provider.dart';
 
 class BleService {
   final Ref ref;
@@ -16,8 +17,8 @@ class BleService {
 
   void _initEventChannel() {
     BleBridge.events.listen(
-      (event) {
-        _handleNativeEvent(event);
+      (event) async {
+        await _handleNativeEvent(event);
       },
       onError: (error) {
         // ignore: avoid_print
@@ -27,7 +28,7 @@ class BleService {
     );
   }
 
-  void _handleNativeEvent(Map<String, dynamic> event) {
+  Future<void> _handleNativeEvent(Map<String, dynamic> event) async {
     final type = event['type'] as String?;
     switch (type) {
       case 'encounter':
@@ -40,7 +41,6 @@ class BleService {
         print(
           '[BITTRA-BLE][ENCOUNTER] peerId=$peerId senderId=$senderId teaser=$teaser rssi=$rssi',
         );
-        // Push this data to the Provider (replacing mock with real logic eventually)
         ref
             .read(mockEncountersProvider.notifier)
             .upsertEncounter(
@@ -59,7 +59,6 @@ class BleService {
         print(
           '[BITTRA-BLE][STATUS] peerId=$peerId status=$statusStr error=${error ?? ''}',
         );
-        // Convert string to enum
         RequestStatus reqStatus = RequestStatus.requested;
         switch (statusStr) {
           case 'connecting':
@@ -80,7 +79,6 @@ class BleService {
             break;
         }
 
-        // We use peerId (UUID of the peripheral) as the encounterId for mapping
         ref
             .read(mockRequestLogsProvider.notifier)
             .updateRequest(peerId, reqStatus, error: error);
@@ -102,6 +100,24 @@ class BleService {
         }
         break;
 
+      case 'delivery':
+        final noticeId = event['noticeId'];
+        final countValue = event['count'];
+        if (noticeId is! String || noticeId.isEmpty || countValue is! num) {
+          throw StateError('Invalid delivery event: $event');
+        }
+        final count = countValue.toInt();
+        if (count < 0 || countValue != count) {
+          throw StateError('Invalid delivery count: $event');
+        }
+
+        // ignore: avoid_print
+        print('[BITTRA-BLE][DELIVERY] noticeId=$noticeId count=$count');
+        await ref
+            .read(sentNoticeHistoryProvider.notifier)
+            .updateReceivedCount(noticeId: noticeId, receivedCount: count);
+        break;
+
       case 'log':
         final tag = event['tag'] as String? ?? '';
         final message = event['message'] as String? ?? '';
@@ -119,16 +135,17 @@ class BleService {
     }
   }
 
-  Future<void> startVenueMode(String teaser, String bodyText) async {
-    try {
-      await BleBridge.setTeaser(teaser);
-      await BleBridge.setBody(bodyText);
-      await BleBridge.startVenueMode();
-    } on PlatformException catch (e) {
-      // ignore: avoid_print
-      print('[BITTRA-BLE][FLUTTER] startVenueMode failed: ${e.message}');
-      log('Failed to start venue mode: ${e.message}');
+  Future<void> startVenueMode(
+    String noticeId,
+    String teaser,
+    String bodyText,
+  ) async {
+    if (noticeId.isEmpty) {
+      throw ArgumentError.value(noticeId, 'noticeId', 'must not be empty');
     }
+    await BleBridge.setTeaser(teaser);
+    await BleBridge.setBody(bodyText);
+    await BleBridge.startVenueMode(noticeId);
   }
 
   Future<void> startReceiveOnly() async {
@@ -162,5 +179,4 @@ class BleService {
   }
 }
 
-// Provider instance for BleService
 final bleServiceProvider = Provider((ref) => BleService(ref));

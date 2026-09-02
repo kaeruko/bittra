@@ -16,7 +16,7 @@ class DatabaseService {
     final path = join(dir.path, 'bittora.db');
     return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE encounters (
@@ -46,6 +46,11 @@ class DatabaseService {
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await _createSentNoticesTable(db);
+        } else if (oldVersion < 3) {
+          await db.execute(
+            'ALTER TABLE sent_notices '
+            'ADD COLUMN receivedCount INTEGER NOT NULL DEFAULT 0',
+          );
         }
       },
     );
@@ -57,7 +62,8 @@ class DatabaseService {
         id TEXT PRIMARY KEY,
         teaser TEXT NOT NULL,
         body TEXT NOT NULL,
-        sentAt INTEGER NOT NULL
+        sentAt INTEGER NOT NULL,
+        receivedCount INTEGER NOT NULL DEFAULT 0
       )
     ''');
   }
@@ -111,6 +117,24 @@ class DatabaseService {
       _sentNoticeToRow(notice),
       conflictAlgorithm: ConflictAlgorithm.abort,
     );
+  }
+
+  Future<void> updateSentNoticeReceivedCount(
+    String noticeId,
+    int receivedCount,
+  ) async {
+    final db = await database;
+    final updatedRows = await db.update(
+      'sent_notices',
+      {'receivedCount': receivedCount},
+      where: 'id = ?',
+      whereArgs: [noticeId],
+    );
+    if (updatedRows != 1) {
+      throw StateError(
+        'Expected one sent notice row for $noticeId, updated $updatedRows',
+      );
+    }
   }
 
   Future<void> deleteAll() async {
@@ -173,6 +197,7 @@ class DatabaseService {
     'teaser': notice.teaser,
     'body': notice.body,
     'sentAt': notice.sentAt.millisecondsSinceEpoch,
+    'receivedCount': notice.receivedCount,
   };
 
   SentNotice _rowToSentNotice(Map<String, dynamic> row) => SentNotice(
@@ -180,6 +205,7 @@ class DatabaseService {
     teaser: row['teaser'] as String,
     body: row['body'] as String,
     sentAt: DateTime.fromMillisecondsSinceEpoch(row['sentAt'] as int),
+    receivedCount: row['receivedCount'] as int,
   );
 }
 

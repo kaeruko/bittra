@@ -10,6 +10,9 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.util.UUID
 
 enum class RequestStatus(val rawValue: String) {
@@ -39,10 +42,13 @@ class BleCentral(private val context: Context, private val log: (String, String)
     private var currentGatt: BluetoothGatt? = null
     private var reqChar: BluetoothGattCharacteristic? = null
     private var chunkChar: BluetoothGattCharacteristic? = null
+    private var ackChar: BluetoothGattCharacteristic? = null
 
     private val assembler = ChunkAssembler()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var timeoutRunnable: Runnable? = null
+    private var ackTimeoutRunnable: Runnable? = null
+    private var pendingCompletedBody: String? = null
     private var retryLeft = 1
     private var targetDevice: BluetoothDevice? = null
     private var isScanning = false
@@ -52,13 +58,9 @@ class BleCentral(private val context: Context, private val log: (String, String)
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val record = result.scanRecord ?: return
 
-            // Android peripheral: payload in manufacturer specific data.
-            // Current iOS peripheral: compact teaser in localName. Keep service
-            // data and legacy Base64 local-name decoding for older builds.
             val mfgData = record.getManufacturerSpecificData(GATTProfile.MANUFACTURER_ID)
             val srvData = record.serviceData[ParcelUuid(GATTProfile.SERVICE_UUID)]
-            
-            // Log exactly what we see for debugging iOS discoveries
+
             android.util.Log.d("BleCentral", "ScanResult for ${result.device.address}: name=${record.deviceName}, mfgData=${mfgData?.size}, srvData=${srvData?.size}, srvUuids=${record.serviceUuids}")
 
             val decoded = if (mfgData != null && mfgData.isNotEmpty()) {
@@ -74,9 +76,6 @@ class BleCentral(private val context: Context, private val log: (String, String)
                     } else {
                         var legacyResult: PayloadCodec.AdvertResult? = null
                         var tempName: String = localName
-
-                        // Backward compatibility for the previous Base64
-                        // local-name representation.
                         for (i in 0 until 4) {
                             if (tempName.isEmpty()) break
                             try {
@@ -85,7 +84,6 @@ class BleCentral(private val context: Context, private val log: (String, String)
                                 legacyResult = PayloadCodec.decodeAdvert(decodedData)
                                 if (legacyResult != null) break
                             } catch (_: IllegalArgumentException) {
-                                // Try again without the possibly truncated tail.
                             }
                             tempName = tempName.dropLast(1)
                         }
@@ -96,8 +94,7 @@ class BleCentral(private val context: Context, private val log: (String, String)
                 }
             }
 
-            if (decoded == null) return
-            if (decoded.teaser.isEmpty()) return
+            if (decoded == null || decoded.teaser.isEmpty()) return
             onEncounter?.invoke(result.device, decoded.senderId, decoded.teaser, result.rssi)
         }
 
@@ -116,8 +113,6 @@ class BleCentral(private val context: Context, private val log: (String, String)
 
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 log("CENTRAL", "didConnect")
-                // Some Android Bluetooth stacks stall service discovery while a
-                // low-latency scan is running or when discovery starts immediately.
                 mainHandler.postDelayed({
                     if (gatt !== currentGatt) return@postDelayed
                     onStatus?.invoke(RequestStatus.DISCOVERING, null)
@@ -149,10 +144,15 @@ class BleCentral(private val context: Context, private val log: (String, String)
 
             reqChar = service.getCharacteristic(GATTProfile.REQ_CHAR_UUID)
             chunkChar = service.getCharacteristic(GATTProfile.CHUNK_CHAR_UUID)
+            ackChar = service.getCharacteristic(GATTProfile.ACK_CHAR_UUID)
 
             if (reqChar == null || chunkChar == null) {
                 mainHandler.post { failOrRetry("missing_char") }
                 return
+            }
+
+            if (ackChar == null) {
+                log("CENTRAL", "sender does not support delivery ACK")
             }
 
             mainHandler.post {
@@ -164,7 +164,6 @@ class BleCentral(private val context: Context, private val log: (String, String)
                     descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                     gatt.writeDescriptor(descriptor)
                 } else {
-                    // Fallback to direct write if descriptor is missing 
                     sendRequest()
                 }
             }
@@ -179,7 +178,23 @@ class BleCentral(private val context: Context, private val log: (String, String)
             }
         }
 
-        // API 33+ callback
+        override fun onCharacteristicWrite(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            if (gatt !== currentGatt || characteristic.uuid != GATTProfile.ACK_CHAR_UUID) return
+            mainHandler.post {
+                stopAckTimeout()
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    log("CENTRAL", "delivery ACK confirmed")
+                } else {
+                    log("CENTRAL", "delivery ACK failed status=$status")
+                }
+                completePendingBody()
+            }
+        }
+
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -188,7 +203,6 @@ class BleCentral(private val context: Context, private val log: (String, String)
             handleCharacteristicChanged(characteristic, value)
         }
 
-        // API < 33 deprecated callback (Android 11 etc.)
         @Suppress("DEPRECATION")
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
@@ -199,8 +213,7 @@ class BleCentral(private val context: Context, private val log: (String, String)
     }
 
     private fun handleCharacteristicChanged(characteristic: BluetoothGattCharacteristic, value: ByteArray) {
-        if (characteristic.uuid != GATTProfile.CHUNK_CHAR_UUID) return
-        if (value.size < 3) return
+        if (characteristic.uuid != GATTProfile.CHUNK_CHAR_UUID || value.size < 3) return
 
         val seq = (value[0].toInt() and 0xFF) or ((value[1].toInt() and 0xFF) shl 8)
         val flags = value[2].toInt() and 0xFF
@@ -215,15 +228,50 @@ class BleCentral(private val context: Context, private val log: (String, String)
 
             if (completed && fullData != null) {
                 stopTimeout()
-                val s = String(fullData, Charsets.UTF_8)
-                val preview = if (s.length > 40) s.substring(0, 40) else s
-                onBody?.invoke(s)
-                onPreview?.invoke(preview)
-                onStatus?.invoke(RequestStatus.COMPLETED, null)
-                closeCurrentGatt()
-                finishRequest()
+                val body = try {
+                    Charsets.UTF_8.newDecoder()
+                        .onMalformedInput(CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(CodingErrorAction.REPORT)
+                        .decode(ByteBuffer.wrap(fullData))
+                        .toString()
+                } catch (e: CharacterCodingException) {
+                    failWithoutRetry("body_invalid_utf8: ${e.message ?: e.javaClass.simpleName}")
+                    return@post
+                }
+                pendingCompletedBody = body
+                sendDeliveryAckOrComplete()
             }
         }
+    }
+
+    private fun sendDeliveryAckOrComplete() {
+        val characteristic = ackChar
+        if (characteristic == null) {
+            completePendingBody()
+            return
+        }
+
+        characteristic.value = byteArrayOf(0x02)
+        characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        if (currentGatt?.writeCharacteristic(characteristic) == true) {
+            log("CENTRAL", "delivery ACK sent")
+            startAckTimeout(2000)
+        } else {
+            log("CENTRAL", "delivery ACK write not started")
+            completePendingBody()
+        }
+    }
+
+    private fun completePendingBody() {
+        stopAckTimeout()
+        val body = pendingCompletedBody ?: return
+        pendingCompletedBody = null
+        val preview = if (body.length > 40) body.substring(0, 40) else body
+        onBody?.invoke(body)
+        onPreview?.invoke(preview)
+        onStatus?.invoke(RequestStatus.COMPLETED, null)
+        closeCurrentGatt()
+        finishRequest()
     }
 
     private fun sendRequest() {
@@ -281,18 +329,19 @@ class BleCentral(private val context: Context, private val log: (String, String)
     private fun connect(device: BluetoothDevice) {
         resetRequestState()
         onStatus?.invoke(RequestStatus.CONNECTING, null)
-        
         currentGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-        
         startTimeout(10000)
         log("CENTRAL", "connect start ${device.address}")
     }
 
     private fun resetRequestState() {
         stopTimeout()
+        stopAckTimeout()
         assembler.reset()
+        pendingCompletedBody = null
         reqChar = null
         chunkChar = null
+        ackChar = null
         closeCurrentGatt()
     }
 
@@ -327,14 +376,38 @@ class BleCentral(private val context: Context, private val log: (String, String)
         timeoutRunnable = null
     }
 
+    private fun startAckTimeout(ms: Long) {
+        stopAckTimeout()
+        val r = Runnable {
+            log("CENTRAL", "delivery ACK timeout")
+            completePendingBody()
+        }
+        mainHandler.postDelayed(r, ms)
+        ackTimeoutRunnable = r
+    }
+
+    private fun stopAckTimeout() {
+        ackTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+        ackTimeoutRunnable = null
+    }
+
+    private fun failWithoutRetry(reason: String) {
+        stopTimeout()
+        stopAckTimeout()
+        log("CENTRAL", "request failed without retry reason=$reason")
+        onStatus?.invoke(RequestStatus.FAILED, reason)
+        closeCurrentGatt()
+        finishRequest()
+    }
+
     private fun failOrRetry(reason: String) {
         stopTimeout()
+        stopAckTimeout()
         if (retryLeft > 0 && targetDevice != null) {
             retryLeft -= 1
             log("CENTRAL", "retry $retryLeft reason=$reason")
             val p = targetDevice!!
             closeCurrentGatt()
-            
             mainHandler.postDelayed({ connect(p) }, 200)
         } else {
             onStatus?.invoke(RequestStatus.FAILED, reason)

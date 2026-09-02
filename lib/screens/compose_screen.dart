@@ -48,11 +48,13 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
 
     setState(() => _isSubmitting = true);
     try {
-      await ref
+      final notice = await ref
           .read(sentNoticeHistoryProvider.notifier)
           .addSentNotice(teaser: teaser, body: body);
 
-      ref.read(activeVenueProvider.notifier).start(teaser, body);
+      await ref
+          .read(activeVenueProvider.notifier)
+          .start(notice.id, teaser, body);
 
       if (!mounted) return;
       ScaffoldMessenger.of(

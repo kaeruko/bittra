@@ -35,8 +35,13 @@ class MainActivity : FlutterActivity() {
 
             when (call.method) {
                 "startVenueMode" -> {
-                    ble.startVenueMode()
-                    result.success(null)
+                    val noticeId = call.argument<String>("noticeId")
+                    if (noticeId.isNullOrBlank()) {
+                        result.error("INVALID_ARGUMENTS", "noticeId is required", null)
+                    } else {
+                        ble.startVenueMode(noticeId)
+                        result.success(null)
+                    }
                 }
                 "startReceiveOnly" -> {
                     ble.startReceiveOnly()
@@ -101,6 +106,9 @@ class MainActivity : FlutterActivity() {
             eventSink?.success(eventMap)
         }
         bleCoordinator?.onBodyEvent = { eventMap ->
+            eventSink?.success(eventMap)
+        }
+        bleCoordinator?.onDeliveryEvent = { eventMap ->
             eventSink?.success(eventMap)
         }
         bleCoordinator?.onLogEvent = { eventMap ->

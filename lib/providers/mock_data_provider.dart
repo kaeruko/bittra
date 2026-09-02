@@ -37,7 +37,6 @@ class MockEncounters extends _$MockEncounters {
     _lastRawSightings[dedupeKey] = now;
 
     var existingIndex = state.indexWhere((e) => e.dedupeKey == dedupeKey);
-    // Migrate the row created by an older build without creating another card.
     if (existingIndex < 0 && senderId != null) {
       existingIndex = state.indexWhere((e) => e.dedupeKey == '$peerId|$teaser');
     }
@@ -48,8 +47,6 @@ class MockEncounters extends _$MockEncounters {
           : now.difference(previousRawSighting);
       final isSeparateEncounter = gap >= _separateEncounterGap;
 
-      // Advertisements arrive several times a second. Keep the latest sighting
-      // fresh without rebuilding the screen and writing SQLite for every packet.
       if (!isSeparateEncounter &&
           now.difference(existing.lastSeenAt) < _screenRefreshInterval) {
         return;
@@ -157,7 +154,6 @@ class MockRequestLogs extends _$MockRequestLogs {
   }
 }
 
-// ブロック済みピアID管理
 @riverpod
 class BlockedPeers extends _$BlockedPeers {
   static const _key = 'blocked_peers';
@@ -192,7 +188,6 @@ class BlockedPeers extends _$BlockedPeers {
   }
 }
 
-// Dummy Settings
 @riverpod
 class MockSettings extends _$MockSettings {
   @override
@@ -251,8 +246,6 @@ class ActiveVenue extends _$ActiveVenue {
     final prefs = await SharedPreferences.getInstance();
     final teaser = prefs.getString(_keyTeaser);
     final body = prefs.getString(_keyBody) ?? '';
-    // Receive by default. Only a user who explicitly turns Bluetooth off in
-    // settings stays opted out on later launches.
     final bluetoothEnabled = prefs.getBool(_keyBluetoothEnabled) ?? true;
 
     try {
@@ -270,8 +263,6 @@ class ActiveVenue extends _$ActiveVenue {
       return;
     }
 
-    // Never resume an old outgoing announcement automatically. App launch is
-    // receive-only; posting explicitly starts sending the current announcement.
     state = VenueState(
       isBroadcasting: true,
       isSending: false,
@@ -291,15 +282,15 @@ class ActiveVenue extends _$ActiveVenue {
     if (s.body != null) await prefs.setString(_keyBody, s.body!);
   }
 
-  void start(String teaser, String body) {
+  Future<void> start(String noticeId, String teaser, String body) async {
+    await ref.read(bleServiceProvider).startVenueMode(noticeId, teaser, body);
     state = VenueState(
       isBroadcasting: true,
       isSending: true,
       teaser: teaser,
       body: body,
     );
-    _save(state);
-    ref.read(bleServiceProvider).startVenueMode(teaser, body);
+    await _save(state);
   }
 
   void startReceiveOnly() {

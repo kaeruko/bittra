@@ -229,6 +229,24 @@ class SentNoticeTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ],
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  Icons.mark_email_read_outlined,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '受信確認 ${notice.receivedCount}人',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),

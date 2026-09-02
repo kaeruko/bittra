@@ -24,7 +24,7 @@ class SentNoticeHistoryNotifier extends Notifier<List<SentNotice>> {
     state = notices;
   }
 
-  Future<void> addSentNotice({
+  Future<SentNotice> addSentNotice({
     required String teaser,
     required String body,
   }) async {
@@ -39,5 +39,45 @@ class SentNoticeHistoryNotifier extends Notifier<List<SentNotice>> {
 
     await databaseServiceProvider.insertSentNotice(notice);
     state = [notice, ...state];
+    return notice;
+  }
+
+  Future<void> updateReceivedCount({
+    required String noticeId,
+    required int receivedCount,
+  }) async {
+    if (receivedCount < 0) {
+      throw ArgumentError.value(
+        receivedCount,
+        'receivedCount',
+        'must be zero or greater',
+      );
+    }
+
+    await _loadFuture;
+    final index = state.indexWhere((notice) => notice.id == noticeId);
+    if (index < 0) {
+      throw StateError('Sent notice not found for delivery receipt: $noticeId');
+    }
+
+    final current = state[index];
+    if (receivedCount < current.receivedCount) {
+      throw StateError(
+        'Delivery receipt count regressed for $noticeId: '
+        '${current.receivedCount} -> $receivedCount',
+      );
+    }
+    if (receivedCount == current.receivedCount) {
+      return;
+    }
+
+    await databaseServiceProvider.updateSentNoticeReceivedCount(
+      noticeId,
+      receivedCount,
+    );
+
+    final updatedState = List<SentNotice>.from(state);
+    updatedState[index] = current.copyWith(receivedCount: receivedCount);
+    state = updatedState;
   }
 }

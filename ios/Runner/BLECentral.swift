@@ -18,10 +18,7 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
   private var cm: CBCentralManager!
   private let log: (String, String) -> Void
 
-  // 発見データ: UUID(peerId), Teaser, RSSI, CBPeripheral
   var onEncounter: ((CBPeripheral, UInt32, String, Int) -> Void)?
-
-  // 本文受信
   var onStatus: ((RequestStatus, String?) -> Void)?
   var onPreview: ((String) -> Void)?
   var onBody: ((String) -> Void)?
@@ -29,9 +26,12 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
   private var targetPeripheral: CBPeripheral?
   private var reqChar: CBCharacteristic?
   private var chunkChar: CBCharacteristic?
+  private var ackChar: CBCharacteristic?
 
   private var assembler = ChunkAssembler()
   private var timeoutTimer: DispatchSourceTimer?
+  private var ackTimeoutTimer: DispatchSourceTimer?
+  private var pendingCompletedBody: String?
   private var retryLeft: Int = 1
   private var shouldScanWhenPoweredOn: Bool = false
   private var resumeScanAfterRequest: Bool = false
@@ -81,29 +81,32 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     targetPeripheral?.delegate = self
     onStatus?(.connecting, nil)
     cm.connect(peripheral, options: nil)
-    startTimeout(seconds: 3.0) // Timeout is 3.0 specified in docs
+    startTimeout(seconds: 3.0)
     log("CENTRAL", "connect start \(peripheral.identifier)")
   }
 
   private func resetRequestState() {
     stopTimeout()
+    stopAckTimeout()
     assembler.reset()
+    pendingCompletedBody = nil
     reqChar = nil
     chunkChar = nil
+    ackChar = nil
   }
 
   private func startTimeout(seconds: Double) {
     stopTimeout()
-    let t = DispatchSource.makeTimerSource(queue: .main)
-    t.schedule(deadline: .now() + seconds)
-    t.setEventHandler { [weak self] in
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now() + seconds)
+    timer.setEventHandler { [weak self] in
       guard let self = self else { return }
       self.log("CENTRAL", "timeout")
       self.onStatus?(.timeout, nil)
       self.failOrRetry("timeout")
     }
-    t.resume()
-    timeoutTimer = t
+    timer.resume()
+    timeoutTimer = timer
   }
 
   private func stopTimeout() {
@@ -111,8 +114,27 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     timeoutTimer = nil
   }
 
+  private func startAckTimeout(seconds: Double) {
+    stopAckTimeout()
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now() + seconds)
+    timer.setEventHandler { [weak self] in
+      guard let self = self else { return }
+      self.log("CENTRAL", "delivery ACK timeout")
+      self.completePendingBody()
+    }
+    timer.resume()
+    ackTimeoutTimer = timer
+  }
+
+  private func stopAckTimeout() {
+    ackTimeoutTimer?.cancel()
+    ackTimeoutTimer = nil
+  }
+
   private func failOrRetry(_ reason: String) {
     stopTimeout()
+    stopAckTimeout()
     if retryLeft > 0, let p = targetPeripheral {
       retryLeft -= 1
       log("CENTRAL", "retry \(retryLeft) reason=\(reason)")
@@ -137,8 +159,6 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     }
   }
 
-  // MARK: - CBCentralManagerDelegate
-
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
     log("CENTRAL", "state=\(central.state.rawValue)")
     if central.state == .poweredOn && shouldScanWhenPoweredOn {
@@ -159,8 +179,6 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
       "didDiscover id=\(peripheral.identifier) rssi=\(RSSI) name=\(advertisedName) keys=[\(keys)]"
     )
 
-    // Android peripheral: binary payload in manufacturer specific data (skip
-    // the 2-byte company ID). iOS peripheral: compact teaser in localName.
     let decoded: (senderId: UInt32, teaser: String)?
     if let mfgData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data, mfgData.count > 2 {
       let payload = Data(mfgData.dropFirst(2))
@@ -174,7 +192,6 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
         decoded = compact
         log("SCAN", "payload source=compactLocalName bytes=\(localName.utf8.count)")
       } else if let data = Data(base64Encoded: localName) {
-        // Backward compatibility for the previous Base64 local-name format.
         decoded = PayloadCodec.decodeAdvert(data)
         log("SCAN", "payload source=localName base64Chars=\(localName.count) payloadBytes=\(data.count)")
       } else {
@@ -217,26 +234,24 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     log("CENTRAL", "didDisconnect id=\(peripheral.identifier) error=\(error?.localizedDescription ?? "-")")
   }
 
-  // MARK: - CBPeripheralDelegate
-
   func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-    if let e = error {
-      log("CENTRAL", "discoverServices error \(e.localizedDescription)")
+    if let error = error {
+      log("CENTRAL", "discoverServices error \(error.localizedDescription)")
       return failOrRetry("discover_services")
     }
     guard let services = peripheral.services,
-          let s = services.first(where: { $0.uuid == GATTProfile.serviceUUID }) else {
+          let service = services.first(where: { $0.uuid == GATTProfile.serviceUUID }) else {
       let found = peripheral.services?.map { $0.uuid.uuidString }.joined(separator: ",") ?? "none"
       log("CENTRAL", "required service missing found=[\(found)]")
       return failOrRetry("no_service")
     }
-    log("CENTRAL", "service discovered uuid=\(s.uuid.uuidString)")
-    peripheral.discoverCharacteristics([GATTProfile.reqCharUUID, GATTProfile.chunkCharUUID], for: s)
+    log("CENTRAL", "service discovered uuid=\(service.uuid.uuidString)")
+    peripheral.discoverCharacteristics(nil, for: service)
   }
 
   func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-    if let e = error {
-      log("CENTRAL", "discoverChars error \(e.localizedDescription)")
+    if let error = error {
+      log("CENTRAL", "discoverChars error \(error.localizedDescription)")
       return failOrRetry("discover_chars")
     }
     guard let chars = service.characteristics else {
@@ -248,6 +263,7 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
 
     reqChar = chars.first(where: { $0.uuid == GATTProfile.reqCharUUID })
     chunkChar = chars.first(where: { $0.uuid == GATTProfile.chunkCharUUID })
+    ackChar = chars.first(where: { $0.uuid == GATTProfile.ackCharUUID })
 
     guard let reqChar = reqChar, let chunkChar = chunkChar else {
       log(
@@ -257,14 +273,18 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
       return failOrRetry("missing_char")
     }
 
+    if ackChar == nil {
+      log("CENTRAL", "sender does not support delivery ACK")
+    }
+
     log("CENTRAL", "subscribe chunk=\(chunkChar.uuid.uuidString) req=\(reqChar.uuid.uuidString)")
     onStatus?(.subscribing, nil)
     peripheral.setNotifyValue(true, for: chunkChar)
   }
 
   func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-    if let e = error {
-      log("CENTRAL", "notifyState error \(e.localizedDescription)")
+    if let error = error {
+      log("CENTRAL", "notifyState error \(error.localizedDescription)")
       return failOrRetry("notify_fail")
     }
     guard characteristic.uuid == GATTProfile.chunkCharUUID else {
@@ -274,19 +294,17 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
 
     log("CENTRAL", "notify enabled=\(characteristic.isNotifying) characteristic=\(characteristic.uuid.uuidString)")
     onStatus?(.requesting, nil)
-    // REQ：空リクエスト
     let req = Data([0x01])
-    if let reqChar = reqChar {
-      peripheral.writeValue(req, for: reqChar, type: .withoutResponse)
-      log("CENTRAL", "REQ sent")
-    } else {
-      failOrRetry("no_req_char")
+    guard let reqChar = reqChar else {
+      return failOrRetry("no_req_char")
     }
+    peripheral.writeValue(req, for: reqChar, type: .withoutResponse)
+    log("CENTRAL", "REQ sent")
   }
 
   func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-    if let e = error {
-      log("CENTRAL", "didUpdateValue error \(e.localizedDescription)")
+    if let error = error {
+      log("CENTRAL", "didUpdateValue error \(error.localizedDescription)")
       return
     }
     guard characteristic.uuid == GATTProfile.chunkCharUUID else {
@@ -316,14 +334,59 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
 
     if completed, let fullData = fullData {
       stopTimeout()
-      let s = String(data: fullData, encoding: .utf8) ?? ""
-      let preview = String(s.prefix(120))
-      log("CENTRAL", "body completed bytes=\(fullData.count) chars=\(s.count)")
-      onBody?(s)
-      onPreview?(preview)
-      onStatus?(.completed, nil)
-      cm.cancelPeripheralConnection(peripheral)
-      finishRequest()
+      guard let body = String(data: fullData, encoding: .utf8) else {
+        failWithoutRetry("body_invalid_utf8")
+        return
+      }
+      log("CENTRAL", "body completed bytes=\(fullData.count) chars=\(body.count)")
+      pendingCompletedBody = body
+      sendDeliveryAckOrComplete(peripheral)
     }
+  }
+
+  func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+    guard characteristic.uuid == GATTProfile.ackCharUUID else { return }
+    stopAckTimeout()
+    if let error = error {
+      log("CENTRAL", "delivery ACK failed error=\(error.localizedDescription)")
+    } else {
+      log("CENTRAL", "delivery ACK confirmed")
+    }
+    completePendingBody()
+  }
+
+  private func sendDeliveryAckOrComplete(_ peripheral: CBPeripheral) {
+    guard let ackChar = ackChar else {
+      completePendingBody()
+      return
+    }
+    startAckTimeout(seconds: 2.0)
+    peripheral.writeValue(Data([0x02]), for: ackChar, type: .withResponse)
+    log("CENTRAL", "delivery ACK sent")
+  }
+
+  private func completePendingBody() {
+    stopAckTimeout()
+    guard let body = pendingCompletedBody else { return }
+    pendingCompletedBody = nil
+    let preview = String(body.prefix(120))
+    onBody?(body)
+    onPreview?(preview)
+    onStatus?(.completed, nil)
+    if let peripheral = targetPeripheral {
+      cm.cancelPeripheralConnection(peripheral)
+    }
+    finishRequest()
+  }
+
+  private func failWithoutRetry(_ reason: String) {
+    stopTimeout()
+    stopAckTimeout()
+    log("CENTRAL", "request failed without retry reason=\(reason)")
+    onStatus?(.failed, reason)
+    if let peripheral = targetPeripheral {
+      cm.cancelPeripheralConnection(peripheral)
+    }
+    finishRequest()
   }
 }

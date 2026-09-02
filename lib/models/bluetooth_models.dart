@@ -89,11 +89,29 @@ class SentNotice {
   final String teaser;
   final String body;
   final DateTime sentAt;
+  final int receivedCount;
 
   const SentNotice({
     required this.id,
     required this.teaser,
     required this.body,
     required this.sentAt,
+    this.receivedCount = 0,
   });
+
+  SentNotice copyWith({
+    String? id,
+    String? teaser,
+    String? body,
+    DateTime? sentAt,
+    int? receivedCount,
+  }) {
+    return SentNotice(
+      id: id ?? this.id,
+      teaser: teaser ?? this.teaser,
+      body: body ?? this.body,
+      sentAt: sentAt ?? this.sentAt,
+      receivedCount: receivedCount ?? this.receivedCount,
+    );
+  }
 }

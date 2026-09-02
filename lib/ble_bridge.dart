@@ -6,8 +6,8 @@ class BleBridge {
 
   // --- コマンド ---
 
-  static Future<void> startVenueMode() =>
-      _channel.invokeMethod('startVenueMode');
+  static Future<void> startVenueMode(String noticeId) =>
+      _channel.invokeMethod('startVenueMode', {'noticeId': noticeId});
 
   static Future<void> startReceiveOnly() =>
       _channel.invokeMethod('startReceiveOnly');
