@@ -5,8 +5,7 @@ import UIKit
 @objc class AppDelegate: FlutterAppDelegate, FlutterStreamHandler {
   private var bleCoordinator: BLECoordinator?
   private var eventSink: FlutterEventSink?
-  
-  // Channels
+
   private var methodChannel: FlutterMethodChannel?
   private var eventChannel: FlutterEventChannel?
 
@@ -17,23 +16,17 @@ import UIKit
     guard let registrar = self.registrar(forPlugin: "BittraBLEPlugin") else {
       return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
-    
-    // Store channels in instance properties instead of local variables
+
     methodChannel = FlutterMethodChannel(name: "bittra/ble", binaryMessenger: registrar.messenger())
     eventChannel = FlutterEventChannel(name: "bittra/ble_events", binaryMessenger: registrar.messenger())
-    
-    // Initialize BLE Coordinator
+
     bleCoordinator = BLECoordinator()
-    
-    // Setup Method Channel
+
     methodChannel?.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
       self?.handleMethodCall(call, result: result)
     }
-    
-    // Setup Event Channel
+
     eventChannel?.setStreamHandler(self)
-    
-    // Wire up events from Coordinator to EventSink
     wireUpEvents()
 
     GeneratedPluginRegistrant.register(with: self)
@@ -48,7 +41,13 @@ import UIKit
 
     switch call.method {
     case "startVenueMode":
-      ble.startVenueMode()
+      guard let args = call.arguments as? [String: Any],
+            let noticeId = args["noticeId"] as? String,
+            !noticeId.isEmpty else {
+        result(FlutterError(code: "INVALID_ARGUMENTS", message: "noticeId is required", details: nil))
+        return
+      }
+      ble.startVenueMode(noticeId: noticeId)
       result(nil)
 
     case "startReceiveOnly":
@@ -60,18 +59,31 @@ import UIKit
       result(nil)
 
     case "setTeaser":
-      let t = (call.arguments as? [String: Any])?["teaser"] as? String ?? ""
-      ble.setMyTeaser(t)
+      guard let args = call.arguments as? [String: Any],
+            let teaser = args["teaser"] as? String else {
+        result(FlutterError(code: "INVALID_ARGUMENTS", message: "teaser is required", details: nil))
+        return
+      }
+      ble.setMyTeaser(teaser)
       result(nil)
 
     case "setBody":
-      let b = (call.arguments as? [String: Any])?["body"] as? String ?? ""
-      ble.setMyBody(b)
+      guard let args = call.arguments as? [String: Any],
+            let body = args["body"] as? String else {
+        result(FlutterError(code: "INVALID_ARGUMENTS", message: "body is required", details: nil))
+        return
+      }
+      ble.setMyBody(body)
       result(nil)
 
     case "requestBody":
-      let id = (call.arguments as? [String: Any])?["peerId"] as? String ?? ""
-      ble.requestBody(forPeerId: id)
+      guard let args = call.arguments as? [String: Any],
+            let peerId = args["peerId"] as? String,
+            !peerId.isEmpty else {
+        result(FlutterError(code: "INVALID_ARGUMENTS", message: "peerId is required", details: nil))
+        return
+      }
+      ble.requestBody(forPeerId: peerId)
       result(nil)
 
     default:
@@ -89,12 +101,13 @@ import UIKit
     bleCoordinator?.onBodyEvent = { [weak self] eventMap in
       self?.eventSink?(eventMap)
     }
+    bleCoordinator?.onDeliveryEvent = { [weak self] eventMap in
+      self?.eventSink?(eventMap)
+    }
     bleCoordinator?.onLogEvent = { [weak self] eventMap in
       self?.eventSink?(eventMap)
     }
   }
-
-  // MARK: - FlutterStreamHandler
 
   func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
     self.eventSink = events
