@@ -7,22 +7,37 @@ import android.os.Looper
 
 class BleCoordinator(private val context: Context) {
 
-    // Event callbacks to Flutter
     var onEncounterEvent: ((Map<String, Any>) -> Unit)? = null
     var onStatusEvent: ((Map<String, Any>) -> Unit)? = null
     var onBodyEvent: ((Map<String, Any>) -> Unit)? = null
+    var onDeliveryEvent: ((Map<String, Any>) -> Unit)? = null
     var onLogEvent: ((Map<String, Any>) -> Unit)? = null
 
     private var myTeaser: String = ""
     private var myBody: String = ""
 
-    private val peripheral by lazy { BlePeripheral(context, this::addLog) }
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val peripheral by lazy {
+        BlePeripheral(
+            context = context,
+            log = this::addLog,
+            onDeliveryReceipt = { noticeId, count ->
+                mainHandler.post {
+                    onDeliveryEvent?.invoke(
+                        mapOf(
+                            "type" to "delivery",
+                            "noticeId" to noticeId,
+                            "count" to count
+                        )
+                    )
+                }
+            }
+        )
+    }
     private val central by lazy { BleCentral(context, this::addLog) }
 
-    // Use MAC address as peerId for Android
     private val peripheralCache = mutableMapOf<String, BluetoothDevice>()
-
-    private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
         central.onEncounter = { device, senderId, teaser, rssi ->
@@ -45,25 +60,24 @@ class BleCoordinator(private val context: Context) {
 
     fun setMyTeaser(teaser: String) {
         myTeaser = PayloadCodec.normalizeTeaser(teaser)
-        peripheral.setContent(myTeaser, myBody)
         addLog("APP", "set teaser=$myTeaser")
     }
 
     fun setMyBody(body: String) {
         myBody = body
-        peripheral.setContent(myTeaser, myBody)
         addLog("APP", "set body bytes=${body.toByteArray(Charsets.UTF_8).size}")
     }
 
-    fun startVenueMode() {
+    fun startVenueMode(noticeId: String) {
+        require(noticeId.isNotBlank()) { "noticeId must not be blank" }
         if (myTeaser.isEmpty()) {
             startReceiveOnly()
             return
         }
-        peripheral.setContent(myTeaser, myBody)
+        peripheral.setContent(noticeId, myTeaser, myBody)
         peripheral.start()
         central.startScan()
-        addLog("APP", "venue ON")
+        addLog("APP", "venue ON noticeId=$noticeId")
     }
 
     fun startReceiveOnly() {
@@ -111,7 +125,6 @@ class BleCoordinator(private val context: Context) {
         }
 
         central.onPreview = { preview ->
-            // In Flutter MVP, preview is optional to display progressively
             handler.post {
                 onBodyEvent?.invoke(
                     mapOf(
