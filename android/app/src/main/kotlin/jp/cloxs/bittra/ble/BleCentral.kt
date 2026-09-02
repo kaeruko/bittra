@@ -10,6 +10,9 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.util.UUID
 
 enum class RequestStatus(val rawValue: String) {
@@ -225,7 +228,16 @@ class BleCentral(private val context: Context, private val log: (String, String)
 
             if (completed && fullData != null) {
                 stopTimeout()
-                val body = String(fullData, Charsets.UTF_8)
+                val body = try {
+                    Charsets.UTF_8.newDecoder()
+                        .onMalformedInput(CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(CodingErrorAction.REPORT)
+                        .decode(ByteBuffer.wrap(fullData))
+                        .toString()
+                } catch (e: CharacterCodingException) {
+                    failWithoutRetry("body_invalid_utf8: ${e.message ?: e.javaClass.simpleName}")
+                    return@post
+                }
                 pendingCompletedBody = body
                 sendDeliveryAckOrComplete()
             }
@@ -377,6 +389,15 @@ class BleCentral(private val context: Context, private val log: (String, String)
     private fun stopAckTimeout() {
         ackTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
         ackTimeoutRunnable = null
+    }
+
+    private fun failWithoutRetry(reason: String) {
+        stopTimeout()
+        stopAckTimeout()
+        log("CENTRAL", "request failed without retry reason=$reason")
+        onStatus?.invoke(RequestStatus.FAILED, reason)
+        closeCurrentGatt()
+        finishRequest()
     }
 
     private fun failOrRetry(reason: String) {

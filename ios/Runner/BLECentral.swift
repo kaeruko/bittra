@@ -246,10 +246,7 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
       return failOrRetry("no_service")
     }
     log("CENTRAL", "service discovered uuid=\(service.uuid.uuidString)")
-    peripheral.discoverCharacteristics(
-      [GATTProfile.reqCharUUID, GATTProfile.chunkCharUUID, GATTProfile.ackCharUUID],
-      for: service
-    )
+    peripheral.discoverCharacteristics(nil, for: service)
   }
 
   func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
@@ -338,7 +335,8 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     if completed, let fullData = fullData {
       stopTimeout()
       guard let body = String(data: fullData, encoding: .utf8) else {
-        return failOrRetry("body_invalid_utf8")
+        failWithoutRetry("body_invalid_utf8")
+        return
       }
       log("CENTRAL", "body completed bytes=\(fullData.count) chars=\(body.count)")
       pendingCompletedBody = body
@@ -375,6 +373,17 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     onBody?(body)
     onPreview?(preview)
     onStatus?(.completed, nil)
+    if let peripheral = targetPeripheral {
+      cm.cancelPeripheralConnection(peripheral)
+    }
+    finishRequest()
+  }
+
+  private func failWithoutRetry(_ reason: String) {
+    stopTimeout()
+    stopAckTimeout()
+    log("CENTRAL", "request failed without retry reason=\(reason)")
+    onStatus?(.failed, reason)
     if let peripheral = targetPeripheral {
       cm.cancelPeripheralConnection(peripheral)
     }
