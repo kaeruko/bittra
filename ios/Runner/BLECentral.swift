@@ -15,6 +15,10 @@ enum RequestStatus: String {
 
 final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
+  private static let initialContinuousScanSeconds: Double = 15.0
+  private static let steadyScanWindowSeconds: Double = 5.0
+  private static let steadyScanPauseSeconds: Double = 10.0
+
   private var cm: CBCentralManager!
   private let log: (String, String) -> Void
 
@@ -31,9 +35,11 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
   private var assembler = ChunkAssembler()
   private var timeoutTimer: DispatchSourceTimer?
   private var ackTimeoutTimer: DispatchSourceTimer?
+  private var scanPhaseTimer: DispatchSourceTimer?
   private var pendingCompletedBody: String?
   private var retryLeft: Int = 1
   private var shouldScanWhenPoweredOn: Bool = false
+  private var scanEnabled: Bool = false
   private var resumeScanAfterRequest: Bool = false
 
   init(log: @escaping (String, String) -> Void) {
@@ -42,36 +48,106 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     self.cm = CBCentralManager(delegate: self, queue: nil)
   }
 
-  func startScan() {
+  func startScan(initialBoost: Bool = true) {
     guard cm.state == .poweredOn else {
       shouldScanWhenPoweredOn = true
       log("CENTRAL", "Bluetooth not poweredOn yet state=\(cm.state.rawValue)")
       return
     }
-    if cm.isScanning {
-      log("SCAN", "already scanning")
+    guard !scanEnabled else {
+      log("SCAN", "already enabled scanning=\(cm.isScanning)")
       return
     }
-    cm.scanForPeripherals(withServices: [GATTProfile.serviceUUID], options: [
-      CBCentralManagerScanOptionAllowDuplicatesKey: true
-    ])
-    log("SCAN", "startScan serviceUUID=\(GATTProfile.serviceUUID.uuidString)")
+
+    scanEnabled = true
+    if initialBoost {
+      beginHardwareScan()
+      scheduleInitialScanEnd()
+    } else {
+      beginSteadyScanWindow()
+    }
   }
 
   func stopScan() {
     shouldScanWhenPoweredOn = false
-    cm.stopScan()
-    log("SCAN", "stopScan")
+    scanEnabled = false
+    cancelScanPhaseTimer()
+    stopHardwareScan(logMessage: "stopScan")
+  }
+
+  private func beginHardwareScan() {
+    guard scanEnabled else { return }
+    guard cm.state == .poweredOn else {
+      shouldScanWhenPoweredOn = true
+      return
+    }
+    guard !cm.isScanning else { return }
+
+    cm.scanForPeripherals(withServices: [GATTProfile.serviceUUID], options: [
+      CBCentralManagerScanOptionAllowDuplicatesKey: false
+    ])
+    log("SCAN", "startScan serviceUUID=\(GATTProfile.serviceUUID.uuidString) duplicates=false")
+  }
+
+  private func stopHardwareScan(logMessage: String) {
+    if cm.isScanning {
+      cm.stopScan()
+    }
+    log("SCAN", logMessage)
+  }
+
+  private func scheduleInitialScanEnd() {
+    scheduleScanPhase(after: Self.initialContinuousScanSeconds) { [weak self] in
+      guard let self = self, self.scanEnabled else { return }
+      self.stopHardwareScan(logMessage: "initial 15s scan complete; pause 10s")
+      self.scheduleSteadyScanRestart()
+    }
+  }
+
+  private func beginSteadyScanWindow() {
+    guard scanEnabled else { return }
+    beginHardwareScan()
+    scheduleScanPhase(after: Self.steadyScanWindowSeconds) { [weak self] in
+      guard let self = self, self.scanEnabled else { return }
+      self.stopHardwareScan(logMessage: "steady 5s scan complete; pause 10s")
+      self.scheduleSteadyScanRestart()
+    }
+  }
+
+  private func scheduleSteadyScanRestart() {
+    scheduleScanPhase(after: Self.steadyScanPauseSeconds) { [weak self] in
+      guard let self = self, self.scanEnabled else { return }
+      self.beginSteadyScanWindow()
+    }
+  }
+
+  private func scheduleScanPhase(after seconds: Double, handler: @escaping () -> Void) {
+    cancelScanPhaseTimer()
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now() + seconds)
+    timer.setEventHandler(handler: handler)
+    timer.resume()
+    scanPhaseTimer = timer
+  }
+
+  private func cancelScanPhaseTimer() {
+    scanPhaseTimer?.cancel()
+    scanPhaseTimer = nil
+  }
+
+  private func suspendScanForRequest() {
+    scanEnabled = false
+    cancelScanPhaseTimer()
+    stopHardwareScan(logMessage: "pause scan for body request")
   }
 
   func requestBody(peripheral: CBPeripheral) {
     log("CENTRAL", "requestBody called for peerId=\(peripheral.identifier)")
     retryLeft = 1
     targetPeripheral = peripheral
-    resumeScanAfterRequest = cm.isScanning
-    if cm.isScanning {
-      cm.stopScan()
-      log("SCAN", "pause scan for body request")
+    resumeScanAfterRequest = scanEnabled
+    if scanEnabled {
+      suspendScanForRequest()
     }
     connect(peripheral)
   }
@@ -155,7 +231,7 @@ final class BLECentral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     targetPeripheral = nil
     if resumeScanAfterRequest {
       resumeScanAfterRequest = false
-      startScan()
+      startScan(initialBoost: false)
     }
   }
 
