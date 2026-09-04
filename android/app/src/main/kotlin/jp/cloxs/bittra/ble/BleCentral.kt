@@ -30,6 +30,10 @@ enum class RequestStatus(val rawValue: String) {
 @SuppressLint("MissingPermission")
 class BleCentral(private val context: Context, private val log: (String, String) -> Unit) {
 
+    companion object {
+        private const val INITIAL_HIGH_PERFORMANCE_MS = 15_000L
+    }
+
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val adapter: BluetoothAdapter? = bluetoothManager.adapter
     private val scanner = adapter?.bluetoothLeScanner
@@ -48,10 +52,12 @@ class BleCentral(private val context: Context, private val log: (String, String)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var timeoutRunnable: Runnable? = null
     private var ackTimeoutRunnable: Runnable? = null
+    private var scanDowngradeRunnable: Runnable? = null
     private var pendingCompletedBody: String? = null
     private var retryLeft = 1
     private var targetDevice: BluetoothDevice? = null
     private var isScanning = false
+    private var currentScanMode: Int? = null
     private var resumeScanAfterRequest = false
 
     private val scanCallback = object : ScanCallback() {
@@ -99,7 +105,9 @@ class BleCentral(private val context: Context, private val log: (String, String)
         }
 
         override fun onScanFailed(errorCode: Int) {
+            cancelScanDowngrade()
             isScanning = false
+            currentScanMode = null
             log("SCAN", "startScan failed: $errorCode")
         }
     }
@@ -288,32 +296,83 @@ class BleCentral(private val context: Context, private val log: (String, String)
         } ?: failOrRetry("no_req_char")
     }
 
-    fun startScan() {
+    fun startScan(initialBoost: Boolean = true) {
         if (adapter == null || !adapter.isEnabled || scanner == null) {
             log("CENTRAL", "Bluetooth not poweredOn yet")
             return
         }
 
         if (isScanning) {
-            log("SCAN", "already scanning")
+            log("SCAN", "already scanning mode=${scanModeName(currentScanMode)}")
             return
         }
 
-        val filters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(GATTProfile.SERVICE_UUID)).build())
+        val scanMode = if (initialBoost) {
+            ScanSettings.SCAN_MODE_LOW_LATENCY
+        } else {
+            ScanSettings.SCAN_MODE_BALANCED
+        }
+        startScanningWithMode(scanMode)
+
+        if (initialBoost) {
+            scheduleScanDowngrade()
+        }
+    }
+
+    private fun startScanningWithMode(scanMode: Int) {
+        val filters = listOf(
+            ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid(GATTProfile.SERVICE_UUID))
+                .build()
+        )
         val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setScanMode(scanMode)
             .build()
 
-        scanner.startScan(filters, settings, scanCallback)
+        scanner?.startScan(filters, settings, scanCallback)
         isScanning = true
-        log("SCAN", "startScan")
+        currentScanMode = scanMode
+        log("SCAN", "startScan mode=${scanModeName(scanMode)}")
+    }
+
+    private fun scheduleScanDowngrade() {
+        cancelScanDowngrade()
+        val runnable = Runnable {
+            scanDowngradeRunnable = null
+            if (!isScanning || currentScanMode != ScanSettings.SCAN_MODE_LOW_LATENCY) {
+                return@Runnable
+            }
+
+            scanner?.stopScan(scanCallback)
+            isScanning = false
+            currentScanMode = null
+            log("SCAN", "initial 15s boost complete; switching to BALANCED")
+            startScanningWithMode(ScanSettings.SCAN_MODE_BALANCED)
+        }
+        scanDowngradeRunnable = runnable
+        mainHandler.postDelayed(runnable, INITIAL_HIGH_PERFORMANCE_MS)
+    }
+
+    private fun cancelScanDowngrade() {
+        scanDowngradeRunnable?.let { mainHandler.removeCallbacks(it) }
+        scanDowngradeRunnable = null
+    }
+
+    private fun scanModeName(scanMode: Int?): String = when (scanMode) {
+        ScanSettings.SCAN_MODE_LOW_LATENCY -> "LOW_LATENCY"
+        ScanSettings.SCAN_MODE_BALANCED -> "BALANCED"
+        ScanSettings.SCAN_MODE_LOW_POWER -> "LOW_POWER"
+        ScanSettings.SCAN_MODE_OPPORTUNISTIC -> "OPPORTUNISTIC"
+        else -> "UNKNOWN"
     }
 
     fun stopScan() {
+        cancelScanDowngrade()
         if (isScanning) {
             scanner?.stopScan(scanCallback)
             isScanning = false
         }
+        currentScanMode = null
         log("SCAN", "stopScan")
     }
 
@@ -356,7 +415,7 @@ class BleCentral(private val context: Context, private val log: (String, String)
         targetDevice = null
         if (resumeScanAfterRequest) {
             resumeScanAfterRequest = false
-            startScan()
+            startScan(initialBoost = false)
         }
     }
 
