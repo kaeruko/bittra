@@ -19,6 +19,10 @@ class BlePeripheral(
     private val onDeliveryReceipt: (String, Int) -> Unit
 ) {
 
+    companion object {
+        private const val INITIAL_HIGH_PERFORMANCE_MS = 15_000L
+    }
+
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val adapter: BluetoothAdapter? = bluetoothManager.adapter
     private val advertiser = adapter?.bluetoothLeAdvertiser
@@ -27,6 +31,8 @@ class BlePeripheral(
     private var isAdvertising = false
     private var isGattServiceReady = false
     private var startAdvertisingWhenReady = false
+    private var currentAdvertiseMode: Int? = null
+    private var advertiseDowngradeRunnable: Runnable? = null
 
     private var myNoticeId: String = ""
     private var myTeaser: String = ""
@@ -55,13 +61,19 @@ class BlePeripheral(
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-            log("ADV", "startAdvertising success")
             isAdvertising = true
+            val mode = currentAdvertiseMode
+            log("ADV", "startAdvertising success mode=${advertiseModeName(mode)}")
+            if (mode == AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY) {
+                scheduleAdvertiseDowngrade()
+            }
         }
 
         override fun onStartFailure(errorCode: Int) {
+            cancelAdvertiseDowngrade()
             log("ADV", "startAdvertising fail: $errorCode")
             isAdvertising = false
+            currentAdvertiseMode = null
         }
     }
 
@@ -72,7 +84,7 @@ class BlePeripheral(
             log("PERIPH", "GATT service ready status=$status")
             if (isGattServiceReady && startAdvertisingWhenReady) {
                 startAdvertisingWhenReady = false
-                startAdvertising()
+                startAdvertising(initialBoost = true)
             }
         }
 
@@ -222,26 +234,30 @@ class BlePeripheral(
             return
         }
 
+        cancelAdvertiseDowngrade()
         if (isAdvertising) {
             advertiser?.stopAdvertising(advertiseCallback)
             isAdvertising = false
+            currentAdvertiseMode = null
         }
 
         setupGATTIfNeeded()
         if (isGattServiceReady) {
-            startAdvertising()
+            startAdvertising(initialBoost = true)
         } else {
             startAdvertisingWhenReady = true
         }
     }
 
     fun stop() {
+        cancelAdvertiseDowngrade()
         startAdvertisingWhenReady = false
         if (isAdvertising) {
             advertiser?.stopAdvertising(advertiseCallback)
             isAdvertising = false
             log("PERIPH", "stopAdvertising")
         }
+        currentAdvertiseMode = null
         pendingNotifyPackets.clear()
         pendingNoticeByDevice.clear()
         isNotifying = false
@@ -292,11 +308,23 @@ class BlePeripheral(
         log("PERIPH", "GATT service added")
     }
 
-    private fun startAdvertising() {
+    private fun startAdvertising(initialBoost: Boolean) {
+        val advertiseMode = if (initialBoost) {
+            AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY
+        } else {
+            AdvertiseSettings.ADVERTISE_MODE_BALANCED
+        }
+        startAdvertisingWithMode(advertiseMode)
+    }
+
+    private fun startAdvertisingWithMode(advertiseMode: Int) {
         if (advertiser == null) return
 
+        cancelAdvertiseDowngrade()
+        currentAdvertiseMode = advertiseMode
+
         val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setAdvertiseMode(advertiseMode)
             .setConnectable(true)
             .setTimeout(0)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
@@ -315,7 +343,40 @@ class BlePeripheral(
             .build()
 
         advertiser.startAdvertising(settings, advertiseData, scanResponse, advertiseCallback)
-        log("ADV", "startAdvertising teaser=${PayloadCodec.normalizeTeaser(myTeaser)} bytes=${payload.size}")
+        log(
+            "ADV",
+            "startAdvertising requested mode=${advertiseModeName(advertiseMode)} teaser=${PayloadCodec.normalizeTeaser(myTeaser)} bytes=${payload.size}"
+        )
+    }
+
+    private fun scheduleAdvertiseDowngrade() {
+        cancelAdvertiseDowngrade()
+        val runnable = Runnable {
+            advertiseDowngradeRunnable = null
+            if (!isAdvertising || currentAdvertiseMode != AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY) {
+                return@Runnable
+            }
+
+            advertiser?.stopAdvertising(advertiseCallback)
+            isAdvertising = false
+            currentAdvertiseMode = null
+            log("ADV", "initial 15s boost complete; switching to BALANCED")
+            startAdvertisingWithMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
+        }
+        advertiseDowngradeRunnable = runnable
+        mainHandler.postDelayed(runnable, INITIAL_HIGH_PERFORMANCE_MS)
+    }
+
+    private fun cancelAdvertiseDowngrade() {
+        advertiseDowngradeRunnable?.let { mainHandler.removeCallbacks(it) }
+        advertiseDowngradeRunnable = null
+    }
+
+    private fun advertiseModeName(advertiseMode: Int?): String = when (advertiseMode) {
+        AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY -> "LOW_LATENCY"
+        AdvertiseSettings.ADVERTISE_MODE_BALANCED -> "BALANCED"
+        AdvertiseSettings.ADVERTISE_MODE_LOW_POWER -> "LOW_POWER"
+        else -> "UNKNOWN"
     }
 
     private fun sendBodyPreviewThenRest(device: BluetoothDevice) {
