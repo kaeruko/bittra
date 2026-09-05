@@ -103,7 +103,7 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: Text(
               activeVenue.isBroadcasting
                   ? activeVenue.isSending
-                        ? '近くのお知らせを受信し、この投稿を送信しています'
+                        ? '近くのお知らせを受信し、このお知らせを送信しています'
                         : '近くのお知らせを自動で受信します'
                   : '送受信を停止しています',
             ),
