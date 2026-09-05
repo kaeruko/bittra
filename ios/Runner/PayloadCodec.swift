@@ -16,9 +16,14 @@ enum PayloadCodec {
   static func normalizeTeaser(_ input: String) -> String {
     var s = input.trimmingCharacters(in: .whitespacesAndNewlines)
 
-    s.removeAll { ch in
-      ch.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
-    }
+    s = s.unicodeScalars
+      .filter { scalar in
+        !CharacterSet.controlCharacters.contains(scalar) &&
+          scalar.value != 0xFE0E &&
+          scalar.value != 0xFE0F
+      }
+      .map(String.init)
+      .joined()
 
     s = s.precomposedStringWithCanonicalMapping
 

@@ -20,6 +20,7 @@ object PayloadCodec {
     fun normalizeTeaser(input: String): String {
         var s = input.trim()
         s = s.replace(Regex("\\p{Cntrl}"), "")
+        s = s.replace("\uFE0E", "").replace("\uFE0F", "")
         s = Normalizer.normalize(s, Normalizer.Form.NFC)
 
         if (s.length > 8) {

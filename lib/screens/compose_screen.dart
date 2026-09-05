@@ -19,6 +19,10 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   final _bodyController = TextEditingController();
   bool _isSubmitting = false;
 
+  static String _normalizeTeaserForTransport(String input) {
+    return input.replaceAll(RegExp(r'[\uFE0E\uFE0F]'), '');
+  }
+
   @override
   void dispose() {
     _teaserController.dispose();
@@ -31,7 +35,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
       return;
     }
 
-    final teaser = _teaserController.text;
+    final teaser = _normalizeTeaserForTransport(_teaserController.text);
     final body = _bodyController.text;
 
     setState(() => _isSubmitting = true);
@@ -91,15 +95,32 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
               ),
               maxLength: 8,
               maxLengthEnforcement: MaxLengthEnforcement.none,
+              buildCounter: (
+                context, {
+                required currentLength,
+                required isFocused,
+                required maxLength,
+              }) {
+                final transportLength = _normalizeTeaserForTransport(
+                  _teaserController.text,
+                ).length;
+                return Text(
+                  '$transportLength/${maxLength ?? 8}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                );
+              },
               autovalidateMode: AutovalidateMode.onUserInteraction,
               validator: (value) {
-                if (value == null || value.isEmpty) {
+                final normalized = _normalizeTeaserForTransport(value ?? '');
+                if (normalized.isEmpty) {
                   return 'おしらせを入力してください';
                 }
-                if (value.length > 8) {
-                  return 'おしらせは8文字以内で入力してください（現在${value.length}文字）';
+                if (normalized.length > 8) {
+                  return 'おしらせは8文字以内で入力してください（現在${normalized.length}文字）';
                 }
-                return ContentModeration.validate(value);
+                return ContentModeration.validate(normalized);
               },
             ),
             const SizedBox(height: 24),
