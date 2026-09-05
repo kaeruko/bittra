@@ -33,6 +33,13 @@ GoRouter appRouter(Ref ref) {
             path: '/compose',
             builder: (context, state) => const ComposeScreen(),
           ),
+          GoRoute(
+            path: '/detail/:id',
+            builder: (context, state) {
+              final requestId = state.pathParameters['id']!;
+              return DetailScreen(requestId: requestId);
+            },
+          ),
         ],
       ),
       GoRoute(
@@ -47,13 +54,6 @@ GoRouter appRouter(Ref ref) {
             fullscreenDialog: true,
             child: RequestDialog(encounter: encounter),
           );
-        },
-      ),
-      GoRoute(
-        path: '/detail/:id',
-        builder: (context, state) {
-          final requestId = state.pathParameters['id']!;
-          return DetailScreen(requestId: requestId);
         },
       ),
     ],
