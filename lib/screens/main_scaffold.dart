@@ -10,17 +10,55 @@ class MainScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: child,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _calculateSelectedIndex(context),
-        onTap: (int idx) => _onItemTapped(idx, context),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.waves), label: 'ストリーム'),
-          BottomNavigationBarItem(icon: Icon(Icons.edit_square), label: 'お知らせ'),
-          BottomNavigationBarItem(icon: Icon(Icons.history), label: '履歴'),
-        ],
-        selectedItemColor: Theme.of(context).colorScheme.primary,
-        unselectedItemColor: Colors.grey,
-        showUnselectedLabels: true,
+      bottomNavigationBar: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFBFE),
+          border: const Border(
+            top: BorderSide(color: Color(0xFFF0E4EE)),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, -3),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: BottomNavigationBar(
+            currentIndex: _calculateSelectedIndex(context),
+            onTap: (int idx) => _onItemTapped(idx, context),
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            selectedItemColor: const Color(0xFFD946EF),
+            unselectedItemColor: const Color(0xFF94A3B8),
+            selectedLabelStyle: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+            showUnselectedLabels: true,
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.waves_rounded),
+                label: 'ストリーム',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.edit_square),
+                label: 'お知らせ',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.history_rounded),
+                label: '履歴',
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
