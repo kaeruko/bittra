@@ -134,17 +134,29 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
                       const SizedBox(width: 4),
                       TextButton(
                         onPressed: () {
-                          ref.read(activeVenueProvider.notifier).stop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('会場モードを停止しました')),
-                          );
+                          if (isSending) {
+                            ref
+                                .read(activeVenueProvider.notifier)
+                                .startReceiveOnly();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('お知らせの送信を停止しました')),
+                            );
+                          } else {
+                            ref.read(activeVenueProvider.notifier).stop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('会場モードを停止しました')),
+                            );
+                          }
                         },
                         style: TextButton.styleFrom(
                           foregroundColor: Colors.orange,
                           minimumSize: const Size(56, 48),
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
-                        child: const Text('停止', style: TextStyle(fontSize: 13)),
+                        child: Text(
+                          isSending ? '送信停止' : '停止',
+                          style: const TextStyle(fontSize: 13),
+                        ),
                       ),
                     ],
                   ),
