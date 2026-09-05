@@ -84,6 +84,7 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
       appBar: AppBar(
         toolbarHeight: 64,
         elevation: 0,
+        backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         titleSpacing: 20,
         title: const Text(
@@ -114,50 +115,106 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
             Container(
               width: double.infinity,
               decoration: const BoxDecoration(gradient: _headerGradient),
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.20),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.20),
+                        color: Colors.white.withValues(alpha: 0.24),
                       ),
                     ),
-                    padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+                    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
                     child: Row(
                       children: [
-                        Icon(
-                          isSending
-                              ? Icons.campaign_rounded
-                              : Icons.bluetooth_searching_rounded,
+                        const Icon(
+                          Icons.bluetooth_searching_rounded,
                           color: Colors.white,
                           size: 17,
                         ),
                         const SizedBox(width: 6),
-                        Expanded(
+                        const Expanded(
                           child: Text(
-                            isSending ? 'お知らせ送信中' : '会場モード ON',
+                            '会場モード ON',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               color: Colors.white,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
-                        _HeaderPillButton(
-                          label: 'お知らせ',
-                          onPressed: () => context.go('/compose'),
-                        ),
+                        const _HeaderStatusPill(label: 'スキャン中'),
                         const SizedBox(width: 6),
                         _HeaderPillButton(
-                          label: isSending ? '送信停止' : '停止',
+                          label: '停止',
                           onPressed: () {
-                            if (isSending) {
+                            ref.read(activeVenueProvider.notifier).stop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('会場モードを停止しました')),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isSending) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.94),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            blurRadius: 14,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.fromLTRB(14, 11, 8, 11),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.campaign_rounded,
+                            color: _accent,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'お知らせ送信中',
+                                  style: TextStyle(
+                                    color: _accent,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  activeVenue.teaser!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xFF172033),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _HeaderPillButton(
+                            label: '送信停止',
+                            onPressed: () {
                               ref
                                   .read(activeVenueProvider.notifier)
                                   .startReceiveOnly();
@@ -166,27 +223,9 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
                                   content: Text('お知らせの送信を停止しました'),
                                 ),
                               );
-                            } else {
-                              ref.read(activeVenueProvider.notifier).stop();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('会場モードを停止しました')),
-                              );
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (isSending) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      activeVenue.teaser!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 18,
+                            },
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -211,6 +250,31 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HeaderStatusPill extends StatelessWidget {
+  final String label;
+
+  const _HeaderStatusPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: _StreamScreenState._accent,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
