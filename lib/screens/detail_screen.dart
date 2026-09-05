@@ -46,11 +46,23 @@ class DetailScreen extends ConsumerWidget {
         ),
       );
     } else {
+      final teaser = log.teaser;
+      if (teaser == null || teaser.isEmpty) {
+        throw StateError(
+          'Received request is missing teaser: '
+          'requestId=${log.id} encounterId=${log.encounterId}',
+        );
+      }
+
       final text = log.body ?? '';
       final urlMatch = _urlRegex.firstMatch(text);
       body = text.isEmpty
           ? const Center(child: Text('本文はありません'))
-          : _ReceivedBody(text: text, url: urlMatch?.group(0));
+          : _ReceivedBody(
+              teaser: teaser,
+              text: text,
+              url: urlMatch?.group(0),
+            );
     }
 
     return Scaffold(
@@ -61,10 +73,15 @@ class DetailScreen extends ConsumerWidget {
 }
 
 class _ReceivedBody extends StatelessWidget {
+  final String teaser;
   final String text;
   final String? url;
 
-  const _ReceivedBody({required this.text, this.url});
+  const _ReceivedBody({
+    required this.teaser,
+    required this.text,
+    this.url,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +90,15 @@ class _ReceivedBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            teaser,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          const Divider(),
+          const SizedBox(height: 12),
           SelectableText(text, style: Theme.of(context).textTheme.bodyLarge),
           if (url != null) ...[
             const SizedBox(height: 24),

@@ -7,10 +7,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 void main() {
-  Widget detailWithBody(String body) {
+  Widget detailWithBody(String body, {String? teaser = 'テストタイトル'}) {
     final log = RequestLog(
       id: 'request-1',
       encounterId: 'peer-1',
+      teaser: teaser,
       status: RequestStatus.received,
       requestedAt: DateTime(2026, 8, 23, 16),
       body: body,
@@ -23,6 +24,24 @@ void main() {
       child: const MaterialApp(home: DetailScreen(encounterId: 'peer-1')),
     );
   }
+
+  testWidgets('受信したタイトルと本文を同じ詳細画面に表示する', (tester) async {
+    await tester.pumpWidget(
+      detailWithBody('こっちが本文', teaser: 'こっちはタイトル'),
+    );
+
+    expect(find.text('本文'), findsOneWidget);
+    expect(find.text('こっちはタイトル'), findsOneWidget);
+    expect(find.text('こっちが本文'), findsOneWidget);
+  });
+
+  testWidgets('受信済みデータにタイトルがない場合は明示的に失敗する', (tester) async {
+    await tester.pumpWidget(detailWithBody('本文', teaser: null));
+
+    final error = tester.takeException();
+    expect(error, isA<StateError>());
+    expect(error.toString(), contains('Received request is missing teaser'));
+  });
 
   testWidgets('URLを含む本文を隠さずリンクボタンを表示する', (tester) async {
     const body = '詳細はこちらです。\nhttps://example.com';
