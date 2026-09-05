@@ -47,6 +47,7 @@ class Encounter {
 class RequestLog {
   final String id;
   final String encounterId;
+  final String? teaser;
   final RequestStatus status;
   final DateTime requestedAt;
   final DateTime? resolvedAt;
@@ -56,6 +57,7 @@ class RequestLog {
   const RequestLog({
     required this.id,
     required this.encounterId,
+    this.teaser,
     required this.status,
     required this.requestedAt,
     this.resolvedAt,
@@ -66,6 +68,7 @@ class RequestLog {
   RequestLog copyWith({
     String? id,
     String? encounterId,
+    String? teaser,
     RequestStatus? status,
     DateTime? requestedAt,
     DateTime? resolvedAt,
@@ -75,6 +78,7 @@ class RequestLog {
     return RequestLog(
       id: id ?? this.id,
       encounterId: encounterId ?? this.encounterId,
+      teaser: teaser ?? this.teaser,
       status: status ?? this.status,
       requestedAt: requestedAt ?? this.requestedAt,
       resolvedAt: resolvedAt ?? this.resolvedAt,

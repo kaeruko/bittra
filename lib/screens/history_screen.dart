@@ -48,7 +48,6 @@ class HistoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final logs = ref.watch(mockRequestLogsProvider);
-    final encounters = ref.watch(mockEncountersProvider);
     final sentNotices = ref.watch(sentNoticeHistoryProvider);
     final receivedLogs = logs
         .where((l) => l.status == RequestStatus.received)
@@ -77,10 +76,7 @@ class HistoryScreen extends ConsumerWidget {
         ),
         body: TabBarView(
           children: [
-            _ReceivedHistoryList(
-              logs: receivedLogs,
-              encounters: encounters,
-            ),
+            _ReceivedHistoryList(logs: receivedLogs),
             _SentHistoryList(notices: sentNotices),
           ],
         ),
@@ -91,9 +87,8 @@ class HistoryScreen extends ConsumerWidget {
 
 class _ReceivedHistoryList extends StatelessWidget {
   final List<RequestLog> logs;
-  final List<Encounter> encounters;
 
-  const _ReceivedHistoryList({required this.logs, required this.encounters});
+  const _ReceivedHistoryList({required this.logs});
 
   @override
   Widget build(BuildContext context) {
@@ -103,13 +98,7 @@ class _ReceivedHistoryList extends StatelessWidget {
 
     return ListView.builder(
       itemCount: logs.length,
-      itemBuilder: (context, index) {
-        final log = logs[index];
-        final encounter = encounters
-            .where((e) => e.id == log.encounterId)
-            .firstOrNull;
-        return ReceivedNoticeTile(log: log, teaser: encounter?.teaser);
-      },
+      itemBuilder: (context, index) => ReceivedNoticeTile(log: logs[index]),
     );
   }
 }
@@ -134,8 +123,7 @@ class _SentHistoryList extends StatelessWidget {
 
 class ReceivedNoticeTile extends StatelessWidget {
   final RequestLog log;
-  final String? teaser;
-  const ReceivedNoticeTile({super.key, required this.log, this.teaser});
+  const ReceivedNoticeTile({super.key, required this.log});
 
   @override
   Widget build(BuildContext context) {
@@ -165,8 +153,11 @@ class ReceivedNoticeTile extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              if (teaser != null)
-                Text(teaser!, style: Theme.of(context).textTheme.titleMedium),
+              if (log.teaser != null && log.teaser!.isNotEmpty)
+                Text(
+                  log.teaser!,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               if (bodyPreview != null) ...[
                 const SizedBox(height: 4),
                 Text(

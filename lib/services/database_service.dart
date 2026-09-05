@@ -16,7 +16,7 @@ class DatabaseService {
     final path = join(dir.path, 'bittora.db');
     return openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE encounters (
@@ -34,6 +34,7 @@ class DatabaseService {
           CREATE TABLE request_logs (
             id TEXT PRIMARY KEY,
             encounterId TEXT NOT NULL,
+            teaser TEXT,
             status TEXT NOT NULL,
             requestedAt INTEGER NOT NULL,
             resolvedAt INTEGER,
@@ -51,6 +52,29 @@ class DatabaseService {
             'ALTER TABLE sent_notices '
             'ADD COLUMN receivedCount INTEGER NOT NULL DEFAULT 0',
           );
+        }
+
+        if (oldVersion < 4) {
+          await db.execute('ALTER TABLE request_logs ADD COLUMN teaser TEXT');
+          await db.execute('''
+            UPDATE request_logs
+            SET teaser = COALESCE(
+              (
+                SELECT encounters.teaser
+                FROM encounters
+                WHERE encounters.id = request_logs.encounterId
+                LIMIT 1
+              ),
+              (
+                SELECT encounters.teaser
+                FROM encounters
+                WHERE encounters.peerId = request_logs.encounterId
+                ORDER BY encounters.lastSeenAt DESC
+                LIMIT 1
+              )
+            )
+            WHERE teaser IS NULL
+          ''');
         }
       },
     );
@@ -173,6 +197,7 @@ class DatabaseService {
   Map<String, dynamic> _requestLogToRow(RequestLog log) => {
     'id': log.id,
     'encounterId': log.encounterId,
+    'teaser': log.teaser,
     'status': log.status.name,
     'requestedAt': log.requestedAt.millisecondsSinceEpoch,
     'resolvedAt': log.resolvedAt?.millisecondsSinceEpoch,
@@ -183,6 +208,7 @@ class DatabaseService {
   RequestLog _rowToRequestLog(Map<String, dynamic> row) => RequestLog(
     id: row['id'] as String,
     encounterId: row['encounterId'] as String,
+    teaser: row['teaser'] as String?,
     status: RequestStatus.values.byName(row['status'] as String),
     requestedAt: DateTime.fromMillisecondsSinceEpoch(row['requestedAt'] as int),
     resolvedAt: row['resolvedAt'] != null
