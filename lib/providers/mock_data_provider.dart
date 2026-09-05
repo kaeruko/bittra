@@ -36,49 +36,106 @@ class MockEncounters extends _$MockEncounters {
     final previousRawSighting = _lastRawSightings[dedupeKey];
     _lastRawSightings[dedupeKey] = now;
 
-    var existingIndex = state.indexWhere((e) => e.dedupeKey == dedupeKey);
-    if (existingIndex < 0 && senderId != null) {
-      existingIndex = state.indexWhere((e) => e.dedupeKey == '$peerId|$teaser');
+    final matchingIndices = <int>[];
+    for (var index = 0; index < state.length; index++) {
+      final encounter = state[index];
+      final sameStableSender = encounter.dedupeKey == dedupeKey;
+      final sameLegacyPeer =
+          senderId != null &&
+          !encounter.dedupeKey.startsWith('sender:') &&
+          encounter.peerId == peerId;
+      if (sameStableSender || sameLegacyPeer) {
+        matchingIndices.add(index);
+      }
     }
-    if (existingIndex >= 0) {
-      final existing = state[existingIndex];
+
+    if (matchingIndices.isNotEmpty) {
+      final exactSenderIndices = matchingIndices
+          .where((index) => state[index].dedupeKey == dedupeKey)
+          .toList();
+      final canonicalPool = exactSenderIndices.isNotEmpty
+          ? exactSenderIndices
+          : matchingIndices;
+      var canonicalIndex = canonicalPool.first;
+      for (final index in canonicalPool.skip(1)) {
+        if (state[index].lastSeenAt.isAfter(state[canonicalIndex].lastSeenAt)) {
+          canonicalIndex = index;
+        }
+      }
+
+      var latestLastSeenAt = state[matchingIndices.first].lastSeenAt;
+      var earliestReceivedAt = state[matchingIndices.first].receivedAt;
+      var maxCount = state[matchingIndices.first].count;
+      for (final index in matchingIndices.skip(1)) {
+        final encounter = state[index];
+        if (encounter.lastSeenAt.isAfter(latestLastSeenAt)) {
+          latestLastSeenAt = encounter.lastSeenAt;
+        }
+        if (encounter.receivedAt.isBefore(earliestReceivedAt)) {
+          earliestReceivedAt = encounter.receivedAt;
+        }
+        if (encounter.count > maxCount) {
+          maxCount = encounter.count;
+        }
+      }
+
       final gap = previousRawSighting == null
-          ? now.difference(existing.lastSeenAt)
+          ? now.difference(latestLastSeenAt)
           : now.difference(previousRawSighting);
       final isSeparateEncounter = gap >= _separateEncounterGap;
+      final hasDuplicates = matchingIndices.length > 1;
 
-      if (!isSeparateEncounter &&
-          now.difference(existing.lastSeenAt) < _screenRefreshInterval) {
+      if (!hasDuplicates &&
+          !isSeparateEncounter &&
+          now.difference(latestLastSeenAt) < _screenRefreshInterval) {
         return;
       }
 
-      final updated = existing.copyWith(
+      final canonical = state[canonicalIndex];
+      final updated = canonical.copyWith(
         peerId: peerId,
         teaser: teaser,
+        receivedAt: earliestReceivedAt,
         dedupeKey: dedupeKey,
         rssi: rssi,
-        count: existing.count + (isSeparateEncounter ? 1 : 0),
+        count: maxCount + (isSeparateEncounter ? 1 : 0),
         lastSeenAt: now,
       );
-      final newState = List<Encounter>.from(state);
-      newState[existingIndex] = updated;
-      newState.sort((a, b) => b.lastSeenAt.compareTo(a.lastSeenAt));
+
+      final duplicateIds = matchingIndices
+          .where((index) => index != canonicalIndex)
+          .map((index) => state[index].id)
+          .where((id) => id != updated.id)
+          .toSet()
+          .toList();
+
+      final matchingIndexSet = matchingIndices.toSet();
+      final newState = <Encounter>[
+        updated,
+        for (var index = 0; index < state.length; index++)
+          if (!matchingIndexSet.contains(index)) state[index],
+      ]..sort((a, b) => b.lastSeenAt.compareTo(a.lastSeenAt));
       state = newState;
-      databaseServiceProvider.upsertEncounter(updated);
-    } else {
-      final newEnc = Encounter(
-        id: peerId,
-        peerId: peerId,
-        teaser: teaser,
-        receivedAt: now,
-        dedupeKey: dedupeKey,
-        lastSeenAt: now,
-        count: 1,
-        rssi: rssi,
+
+      databaseServiceProvider.replaceEncounterAndDeleteDuplicates(
+        updated,
+        duplicateIds: duplicateIds,
       );
-      state = [newEnc, ...state];
-      databaseServiceProvider.upsertEncounter(newEnc);
+      return;
     }
+
+    final newEnc = Encounter(
+      id: peerId,
+      peerId: peerId,
+      teaser: teaser,
+      receivedAt: now,
+      dedupeKey: dedupeKey,
+      lastSeenAt: now,
+      count: 1,
+      rssi: rssi,
+    );
+    state = [newEnc, ...state];
+    databaseServiceProvider.upsertEncounter(newEnc);
   }
 
   void addEncounter(Encounter enc) {
