@@ -219,7 +219,10 @@ final class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
     let preview = bytes.prefix(GATTProfile.previewBytes)
     let rest = bytes.dropFirst(GATTProfile.previewBytes)
 
-    let chunkPayloadSize = 140
+    // Keep each notification within the default ATT payload budget.
+    // The packet header uses 3 bytes (seq 2B + flags 1B), leaving 17 bytes
+    // for body data when the characteristic value budget is 20 bytes.
+    let chunkPayloadSize = 17
     var seq: UInt16 = 0
 
     func enqueueChunks(_ data: Data) {
