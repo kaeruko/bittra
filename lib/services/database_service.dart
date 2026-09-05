@@ -109,6 +109,32 @@ class DatabaseService {
     );
   }
 
+  Future<void> replaceEncounterAndDeleteDuplicates(
+    Encounter encounter, {
+    required List<String> duplicateIds,
+  }) async {
+    final db = await database;
+    await db.transaction((transaction) async {
+      for (final duplicateId in duplicateIds) {
+        if (duplicateId == encounter.id) {
+          throw StateError(
+            'Canonical encounter id was included in duplicateIds: $duplicateId',
+          );
+        }
+        await transaction.delete(
+          'encounters',
+          where: 'id = ?',
+          whereArgs: [duplicateId],
+        );
+      }
+      await transaction.insert(
+        'encounters',
+        _encounterToRow(encounter),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
+  }
+
   // --- RequestLog ---
 
   Future<List<RequestLog>> loadRequestLogs() async {
