@@ -1,7 +1,7 @@
 package jp.cloxs.bitra.ble
 
 import java.nio.ByteBuffer
-import java.nio.charset.CharacterCodingException
+import java.nio.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.text.Normalizer
@@ -9,7 +9,11 @@ import java.text.Normalizer
 object PayloadCodec {
 
     private const val COMPACT_LOCAL_NAME_PREFIX = "~"
+    private const val PACKED_LOCAL_NAME_PREFIX = "!"
     private const val COMPACT_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    private const val PACKED_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#"
+    private const val PACKED_TEASER_BYTES = 16
+    private const val PACKED_ENCODED_LENGTH = 20
     private const val COMPACT_SENDER_ID_MASK = 0xFFFFFFL
     private const val LEGACY_MAX_TEASER_UTF8_BYTES = 20
 
@@ -73,18 +77,72 @@ object PayloadCodec {
     }
 
     fun decodeLocalName(localName: String): AdvertResult? {
-        if (!localName.startsWith(COMPACT_LOCAL_NAME_PREFIX)) return null
+        return when {
+            localName.startsWith(COMPACT_LOCAL_NAME_PREFIX) -> decodeDirectLocalName(localName)
+            localName.startsWith(PACKED_LOCAL_NAME_PREFIX) -> decodePackedLocalName(localName)
+            else -> null
+        }
+    }
+
+    private fun decodeDirectLocalName(localName: String): AdvertResult? {
         val encoded = localName.drop(1)
         if (encoded.length < 3) return null
 
-        val high = COMPACT_ID_ALPHABET.indexOf(encoded[0])
-        val middle = COMPACT_ID_ALPHABET.indexOf(encoded[1])
-        val low = COMPACT_ID_ALPHABET.indexOf(encoded[2])
-        if (high !in 0..15 || middle < 0 || low < 0) return null
-
-        val senderId = ((high shl 12) or (middle shl 6) or low).toLong()
+        val senderId = decodeSenderId(encoded.substring(0, 3)) ?: return null
         val teaser = normalizeTeaser(encoded.drop(3))
         return if (teaser.isEmpty()) null else AdvertResult(senderId, teaser)
+    }
+
+    private fun decodePackedLocalName(localName: String): AdvertResult? {
+        val encoded = localName.drop(1)
+        if (encoded.length != 3 + PACKED_ENCODED_LENGTH) return null
+
+        val senderId = decodeSenderId(encoded.substring(0, 3)) ?: return null
+        val teaser = decodePackedTeaser(encoded.drop(3)) ?: return null
+        return AdvertResult(senderId, teaser)
+    }
+
+    private fun decodeSenderId(encodedId: String): Long? {
+        if (encodedId.length != 3) return null
+        val high = COMPACT_ID_ALPHABET.indexOf(encodedId[0])
+        val middle = COMPACT_ID_ALPHABET.indexOf(encodedId[1])
+        val low = COMPACT_ID_ALPHABET.indexOf(encodedId[2])
+        if (high !in 0..15 || middle < 0 || low < 0) return null
+        return ((high shl 12) or (middle shl 6) or low).toLong()
+    }
+
+    private fun decodePackedTeaser(encoded: String): String? {
+        if (encoded.length != PACKED_ENCODED_LENGTH) return null
+
+        val bytes = ByteArray(PACKED_TEASER_BYTES)
+        var byteOffset = 0
+        var encodedOffset = 0
+        while (encodedOffset < PACKED_ENCODED_LENGTH) {
+            var value = 0L
+            for (i in 0 until 5) {
+                val digit = PACKED_ALPHABET.indexOf(encoded[encodedOffset + i])
+                if (digit < 0) return null
+                value = value * 85L + digit
+                if (value > 0xFFFFFFFFL) return null
+            }
+
+            bytes[byteOffset] = ((value shr 24) and 0xFF).toByte()
+            bytes[byteOffset + 1] = ((value shr 16) and 0xFF).toByte()
+            bytes[byteOffset + 2] = ((value shr 8) and 0xFF).toByte()
+            bytes[byteOffset + 3] = (value and 0xFF).toByte()
+            byteOffset += 4
+            encodedOffset += 5
+        }
+
+        var end = bytes.size
+        while (end >= 2 && bytes[end - 2] == 0.toByte() && bytes[end - 1] == 0.toByte()) {
+            end -= 2
+        }
+        if (end == 0 || end % 2 != 0) return null
+
+        val teaser = decodeUtf16BE(bytes.copyOfRange(0, end)) ?: return null
+        if (teaser.isEmpty() || normalizeTeaser(teaser) != teaser) return null
+        return teaser
     }
 
     data class AdvertResult(val senderId: Long, val teaser: String)
@@ -155,6 +213,18 @@ object PayloadCodec {
     private fun decodeUtf8(bytes: ByteArray): String? {
         return try {
             StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+        } catch (_: CharacterCodingException) {
+            null
+        }
+    }
+
+    private fun decodeUtf16BE(bytes: ByteArray): String? {
+        return try {
+            StandardCharsets.UTF_16BE.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
                 .decode(ByteBuffer.wrap(bytes))
