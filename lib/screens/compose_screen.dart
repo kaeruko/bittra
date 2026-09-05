@@ -20,18 +20,6 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   bool _isSubmitting = false;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final venue = ref.read(activeVenueProvider);
-      if (venue.isBroadcasting) {
-        if (venue.teaser != null) _teaserController.text = venue.teaser!;
-        if (venue.body != null) _bodyController.text = venue.body!;
-      }
-    });
-  }
-
-  @override
   void dispose() {
     _teaserController.dispose();
     _bodyController.dispose();
@@ -90,7 +78,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
           padding: const EdgeInsets.all(16.0),
           children: [
             const Text(
-              '不適切な表現や嫌がらせを目的とした投稿は禁止されています。',
+              '不適切な表現や嫌がらせを目的としたお知らせは禁止されています。',
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
