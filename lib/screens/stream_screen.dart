@@ -84,7 +84,8 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
       appBar: AppBar(
         toolbarHeight: 64,
         elevation: 0,
-        backgroundColor: Colors.transparent,
+        backgroundColor: const Color(0xFFD946EF),
+        foregroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         titleSpacing: 20,
         title: const Text(
