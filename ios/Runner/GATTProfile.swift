@@ -9,6 +9,8 @@ enum GATTProfile {
 
   static let magic: UInt16 = 0x6274 // "bt"
   static let maxTeaserUTF8Bytes: Int = 24
-  static let maxCompactLocalNameUTF8Bytes: Int = 28
+  // Real-device testing showed CoreBluetooth local names arriving intact up to
+  // 25 UTF-8 bytes when the service UUID is advertised alongside them.
+  static let maxCompactLocalNameUTF8Bytes: Int = 25
   static let previewBytes: Int = 120
 }
