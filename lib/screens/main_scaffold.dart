@@ -15,7 +15,7 @@ class MainScaffold extends StatelessWidget {
         onTap: (int idx) => _onItemTapped(idx, context),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.waves), label: 'ストリーム'),
-          BottomNavigationBarItem(icon: Icon(Icons.edit_square), label: '投稿'),
+          BottomNavigationBarItem(icon: Icon(Icons.edit_square), label: 'お知らせ'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: '履歴'),
         ],
         selectedItemColor: Theme.of(context).colorScheme.primary,
