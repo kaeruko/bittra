@@ -16,7 +16,7 @@ class DatabaseService {
     final path = join(dir.path, 'bittora.db');
     return openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE encounters (
@@ -34,6 +34,7 @@ class DatabaseService {
           CREATE TABLE request_logs (
             id TEXT PRIMARY KEY,
             encounterId TEXT NOT NULL,
+            encounterKey TEXT,
             teaser TEXT,
             status TEXT NOT NULL,
             requestedAt INTEGER NOT NULL,
@@ -74,6 +75,37 @@ class DatabaseService {
               )
             )
             WHERE teaser IS NULL
+          ''');
+        }
+
+        if (oldVersion < 5) {
+          await db.execute('ALTER TABLE request_logs ADD COLUMN encounterKey TEXT');
+          await db.execute('''
+            UPDATE request_logs
+            SET encounterKey = COALESCE(
+              (
+                SELECT encounters.dedupeKey
+                FROM encounters
+                WHERE encounters.peerId = request_logs.encounterId
+                  AND (
+                    request_logs.teaser IS NULL OR
+                    encounters.teaser = request_logs.teaser
+                  )
+                ORDER BY encounters.lastSeenAt DESC
+                LIMIT 1
+              ),
+              (
+                SELECT encounters.dedupeKey
+                FROM encounters
+                WHERE encounters.id = request_logs.encounterId
+                  AND (
+                    request_logs.teaser IS NULL OR
+                    encounters.teaser = request_logs.teaser
+                  )
+                LIMIT 1
+              )
+            )
+            WHERE encounterKey IS NULL
           ''');
         }
       },
@@ -223,6 +255,7 @@ class DatabaseService {
   Map<String, dynamic> _requestLogToRow(RequestLog log) => {
     'id': log.id,
     'encounterId': log.encounterId,
+    'encounterKey': log.encounterKey,
     'teaser': log.teaser,
     'status': log.status.name,
     'requestedAt': log.requestedAt.millisecondsSinceEpoch,
@@ -234,6 +267,7 @@ class DatabaseService {
   RequestLog _rowToRequestLog(Map<String, dynamic> row) => RequestLog(
     id: row['id'] as String,
     encounterId: row['encounterId'] as String,
+    encounterKey: row['encounterKey'] as String?,
     teaser: row['teaser'] as String?,
     status: RequestStatus.values.byName(row['status'] as String),
     requestedAt: DateTime.fromMillisecondsSinceEpoch(row['requestedAt'] as int),
