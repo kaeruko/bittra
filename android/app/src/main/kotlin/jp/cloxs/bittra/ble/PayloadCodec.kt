@@ -11,6 +11,7 @@ object PayloadCodec {
     private const val COMPACT_LOCAL_NAME_PREFIX = "~"
     private const val COMPACT_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
     private const val COMPACT_SENDER_ID_MASK = 0xFFFFFFL
+    private const val LEGACY_MAX_TEASER_UTF8_BYTES = 20
 
     fun normalizeTeaser(input: String): String {
         var s = input.trim()
@@ -32,10 +33,36 @@ object PayloadCodec {
             "teaser exceeds ${GATTProfile.MAX_TEASER_UTF8_BYTES} UTF-8 bytes"
         }
 
-        // Legacy BLE scan responses have 27 bytes available for manufacturer
-        // payload after the AD header and company identifier. Store a 24-bit
-        // stable sender id followed by up to 24 UTF-8 teaser bytes so Japanese
-        // titles can use the documented full 8 characters.
+        // Preserve the existing wire format whenever it fits so older app
+        // versions can still discover normal short titles. Only 21-24 byte
+        // teasers need the compact format required for Japanese 7-8 characters.
+        return if (teaserBytes.size <= LEGACY_MAX_TEASER_UTF8_BYTES) {
+            encodeLegacyAdvert(teaserBytes, senderId)
+        } else {
+            encodeCompactAdvert(teaserBytes, senderId)
+        }
+    }
+
+    private fun encodeLegacyAdvert(teaserBytes: ByteArray, senderId: Long): ByteArray {
+        val teaserLength = teaserBytes.size
+        val data = ByteArray(7 + teaserLength)
+
+        data[0] = (GATTProfile.MAGIC and 0xFF).toByte()
+        data[1] = ((GATTProfile.MAGIC shr 8) and 0xFF).toByte()
+        data[2] = (senderId and 0xFF).toByte()
+        data[3] = ((senderId shr 8) and 0xFF).toByte()
+        data[4] = teaserLength.toByte()
+        System.arraycopy(teaserBytes, 0, data, 5, teaserLength)
+        data[5 + teaserLength] = ((senderId shr 16) and 0xFF).toByte()
+        data[6 + teaserLength] = ((senderId shr 24) and 0xFF).toByte()
+
+        return data
+    }
+
+    private fun encodeCompactAdvert(teaserBytes: ByteArray, senderId: Long): ByteArray {
+        // A legacy BLE scan response has 27 bytes available for manufacturer
+        // payload after the AD header and company identifier. A 24-bit stable
+        // sender id plus 24 UTF-8 title bytes fits exactly.
         val compactSenderId = compactSenderId(senderId)
         val data = ByteArray(3 + teaserBytes.size)
         data[0] = (compactSenderId and 0xFF).toByte()
@@ -117,8 +144,8 @@ object PayloadCodec {
         var compact = senderId and COMPACT_SENDER_ID_MASK
         if (compact == 0L) compact = 1L
 
-        // Reserve the old magic prefix so decoders can distinguish the new
-        // compact payload from the legacy format without spending a version byte.
+        // Reserve the old magic prefix so decoders can distinguish compact
+        // payloads from the legacy format without spending a version byte.
         if ((compact and 0xFFFFL) == GATTProfile.MAGIC.toLong()) {
             compact = compact xor 0x000001L
         }
