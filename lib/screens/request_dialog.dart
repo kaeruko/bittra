@@ -51,6 +51,7 @@ class RequestDialog extends ConsumerWidget {
                       final log = RequestLog(
                         id: requestId,
                         encounterId: peerId,
+                        encounterKey: encounter!.dedupeKey,
                         teaser: encounter!.teaser,
                         status: RequestStatus.requested,
                         requestedAt: DateTime.now(),
