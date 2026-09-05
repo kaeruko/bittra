@@ -126,9 +126,9 @@ class _StreamScreenState extends ConsumerState<StreamScreen> {
                           minimumSize: const Size(64, 48),
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
-                        child: Text(
-                          isSending ? '編集' : '投稿する',
-                          style: const TextStyle(fontSize: 13),
+                        child: const Text(
+                          'お知らせ',
+                          style: TextStyle(fontSize: 13),
                         ),
                       ),
                       const SizedBox(width: 4),
