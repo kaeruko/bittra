@@ -324,6 +324,26 @@ class EncounterCard extends ConsumerWidget {
     return '${difference.inDays}日前';
   }
 
+  RequestLog? _findReceivedLog(List<RequestLog> logs) {
+    RequestLog? latest;
+    for (final log in logs) {
+      if (log.status != RequestStatus.received) continue;
+      if (log.teaser != null && log.teaser != encounter.teaser) continue;
+
+      final stableMatch =
+          log.encounterKey != null && log.encounterKey == encounter.dedupeKey;
+      final legacyMatch =
+          log.encounterKey == null &&
+          (log.encounterId == encounter.peerId || log.encounterId == encounter.id);
+      if (!stableMatch && !legacyMatch) continue;
+
+      if (latest == null || log.requestedAt.isAfter(latest.requestedAt)) {
+        latest = log;
+      }
+    }
+    return latest;
+  }
+
   void _showActionSheet(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
       context: context,
@@ -476,6 +496,8 @@ class EncounterCard extends ConsumerWidget {
       end: Alignment.bottomCenter,
       colors: [Color(0xFFFF7A00), Color(0xFFD946EF)],
     );
+    final receivedLog = _findReceivedLog(ref.watch(mockRequestLogsProvider));
+    final isRead = receivedLog != null;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
@@ -495,7 +517,13 @@ class EncounterCard extends ConsumerWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => context.push('/request', extra: encounter),
+          onTap: () {
+            if (receivedLog != null) {
+              context.push('/detail/${receivedLog.id}');
+            } else {
+              context.push('/request', extra: encounter);
+            }
+          },
           onLongPress: () => _showActionSheet(context, ref),
           child: IntrinsicHeight(
             child: Row(
@@ -543,20 +571,37 @@ class EncounterCard extends ConsumerWidget {
                         const SizedBox(width: 12),
                         Container(
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFCEBFC),
+                            color: isRead
+                                ? const Color(0xFFF1ECF8)
+                                : const Color(0xFFFCEBFC),
                             borderRadius: BorderRadius.circular(14),
                           ),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 15,
                             vertical: 10,
                           ),
-                          child: const Text(
-                            '全文',
-                            style: TextStyle(
-                              color: Color(0xFFD946EF),
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
-                            ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isRead) ...[
+                                const Icon(
+                                  Icons.check_circle_rounded,
+                                  size: 15,
+                                  color: Color(0xFF8B5CF6),
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                              Text(
+                                isRead ? '既読' : '全文',
+                                style: TextStyle(
+                                  color: isRead
+                                      ? const Color(0xFF8B5CF6)
+                                      : const Color(0xFFD946EF),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
