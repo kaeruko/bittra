@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -51,8 +52,8 @@ GoRouter appRouter(Ref ref) {
       GoRoute(
         path: '/detail/:id',
         builder: (context, state) {
-          final id = state.pathParameters['id']!;
-          return DetailScreen(encounterId: id);
+          final requestId = state.pathParameters['id']!;
+          return DetailScreen(requestId: requestId);
         },
       ),
     ],

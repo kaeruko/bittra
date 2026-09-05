@@ -136,7 +136,7 @@ class ReceivedNoticeTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       elevation: 1,
       child: InkWell(
-        onTap: () => context.push('/detail/${log.encounterId}'),
+        onTap: () => context.push('/detail/${log.id}'),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(

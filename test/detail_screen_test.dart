@@ -21,7 +21,7 @@ void main() {
       overrides: [
         mockRequestLogsProvider.overrideWithValue([log]),
       ],
-      child: const MaterialApp(home: DetailScreen(encounterId: 'peer-1')),
+      child: const MaterialApp(home: DetailScreen(requestId: 'request-1')),
     );
   }
 
@@ -33,6 +33,39 @@ void main() {
     expect(find.text('本文'), findsOneWidget);
     expect(find.text('こっちはタイトル'), findsOneWidget);
     expect(find.text('こっちが本文'), findsOneWidget);
+  });
+
+  testWidgets('同じpeerIdの複数履歴でもrequestIdで正しい通知を開く', (tester) async {
+    final oldLog = RequestLog(
+      id: 'request-1',
+      encounterId: 'same-peer',
+      teaser: 'iosからお知1',
+      status: RequestStatus.received,
+      requestedAt: DateTime(2026, 9, 5, 11, 50),
+      body: '前の本文',
+    );
+    final newLog = RequestLog(
+      id: 'request-2',
+      encounterId: 'same-peer',
+      teaser: 'iosからお知2',
+      status: RequestStatus.received,
+      requestedAt: DateTime(2026, 9, 5, 11, 53),
+      body: 'ここにきてね',
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          mockRequestLogsProvider.overrideWithValue([newLog, oldLog]),
+        ],
+        child: const MaterialApp(home: DetailScreen(requestId: 'request-2')),
+      ),
+    );
+
+    expect(find.text('iosからお知2'), findsOneWidget);
+    expect(find.text('ここにきてね'), findsOneWidget);
+    expect(find.text('iosからお知1'), findsNothing);
+    expect(find.text('前の本文'), findsNothing);
   });
 
   testWidgets('受信済みデータにタイトルがない場合は明示的に失敗する', (tester) async {

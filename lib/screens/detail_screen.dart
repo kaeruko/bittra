@@ -7,14 +7,14 @@ import '../models/bluetooth_models.dart';
 final _urlRegex = RegExp(r'https?://[^\s]+', caseSensitive: false);
 
 class DetailScreen extends ConsumerWidget {
-  final String encounterId;
+  final String requestId;
 
-  const DetailScreen({super.key, required this.encounterId});
+  const DetailScreen({super.key, required this.requestId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final logs = ref.watch(mockRequestLogsProvider);
-    final log = logs.where((l) => l.encounterId == encounterId).firstOrNull;
+    final log = logs.where((l) => l.id == requestId).firstOrNull;
 
     Widget body;
     if (log == null) {

@@ -11,6 +11,9 @@ import '../providers/sent_notice_history_provider.dart';
 class BleService {
   final Ref ref;
 
+  String? _activeRequestId;
+  String? _activePeerId;
+
   BleService(this.ref) {
     _initEventChannel();
   }
@@ -26,6 +29,24 @@ class BleService {
         log('BleService: Intercepted error from event channel: $error');
       },
     );
+  }
+
+  String _activeRequestIdForPeer(String peerId) {
+    final requestId = _activeRequestId;
+    final activePeerId = _activePeerId;
+    if (requestId == null || activePeerId == null || activePeerId != peerId) {
+      throw StateError(
+        'BLE event does not match active request: '
+        'peerId=$peerId activePeerId=$activePeerId requestId=$requestId',
+      );
+    }
+    return requestId;
+  }
+
+  void _clearActiveRequest(String peerId) {
+    _activeRequestIdForPeer(peerId);
+    _activeRequestId = null;
+    _activePeerId = null;
   }
 
   Future<void> _handleNativeEvent(Map<String, dynamic> event) async {
@@ -53,11 +74,12 @@ class BleService {
 
       case 'status':
         final peerId = event['peerId'] as String;
+        final requestId = _activeRequestIdForPeer(peerId);
         final statusStr = event['status'] as String;
         final error = event['error'] as String?;
         // ignore: avoid_print
         print(
-          '[BITTRA-BLE][STATUS] peerId=$peerId status=$statusStr error=${error ?? ''}',
+          '[BITTRA-BLE][STATUS] requestId=$requestId peerId=$peerId status=$statusStr error=${error ?? ''}',
         );
         RequestStatus reqStatus = RequestStatus.requested;
         switch (statusStr) {
@@ -77,26 +99,35 @@ class BleService {
           case 'failed':
             reqStatus = RequestStatus.failed;
             break;
+          default:
+            throw StateError('Unknown BLE request status: $statusStr');
         }
 
         ref
             .read(mockRequestLogsProvider.notifier)
-            .updateRequest(peerId, reqStatus, error: error);
+            .updateRequest(requestId, reqStatus, error: error);
+
+        if (reqStatus == RequestStatus.received ||
+            reqStatus == RequestStatus.failed ||
+            reqStatus == RequestStatus.timeout) {
+          _clearActiveRequest(peerId);
+        }
         break;
 
       case 'body':
         final peerId = event['peerId'] as String;
+        final requestId = _activeRequestIdForPeer(peerId);
         final preview = event['preview'] as String?;
         final body = event['body'] as String?;
         // ignore: avoid_print
         print(
-          '[BITTRA-BLE][BODY] peerId=$peerId previewChars=${preview?.length ?? 0} bodyChars=${body?.length ?? 0}',
+          '[BITTRA-BLE][BODY] requestId=$requestId peerId=$peerId previewChars=${preview?.length ?? 0} bodyChars=${body?.length ?? 0}',
         );
 
         if (body != null) {
           ref
               .read(mockRequestLogsProvider.notifier)
-              .updateRequest(peerId, RequestStatus.received, body: body);
+              .updateRequest(requestId, RequestStatus.received, body: body);
         }
         break;
 
@@ -168,10 +199,50 @@ class BleService {
     }
   }
 
-  Future<void> requestFullText(String peerId) async {
+  Future<void> requestFullText({
+    required String peerId,
+    required String requestId,
+  }) async {
+    if (peerId.isEmpty) {
+      throw ArgumentError.value(peerId, 'peerId', 'must not be empty');
+    }
+    if (requestId.isEmpty) {
+      throw ArgumentError.value(requestId, 'requestId', 'must not be empty');
+    }
+    if (_activeRequestId != null || _activePeerId != null) {
+      throw StateError(
+        'A BLE request is already active: '
+        'requestId=$_activeRequestId peerId=$_activePeerId',
+      );
+    }
+
+    final request = ref
+        .read(mockRequestLogsProvider)
+        .where((log) => log.id == requestId)
+        .firstOrNull;
+    if (request == null) {
+      throw StateError('Request log not found before BLE request: $requestId');
+    }
+    if (request.encounterId != peerId) {
+      throw StateError(
+        'Request peer mismatch: requestId=$requestId '
+        'logPeerId=${request.encounterId} peerId=$peerId',
+      );
+    }
+
+    _activeRequestId = requestId;
+    _activePeerId = peerId;
+
     try {
       await BleBridge.requestBody(peerId);
     } on PlatformException catch (e) {
+      ref.read(mockRequestLogsProvider.notifier).updateRequest(
+            requestId,
+            RequestStatus.failed,
+            error: 'platform_exception:${e.code}:${e.message ?? ''}',
+          );
+      _activeRequestId = null;
+      _activePeerId = null;
       // ignore: avoid_print
       print('[BITTRA-BLE][FLUTTER] requestFullText failed: ${e.message}');
       log('Failed to request full text: ${e.message}');

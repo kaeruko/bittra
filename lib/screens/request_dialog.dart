@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import '../providers/mock_data_provider.dart';
 import '../models/bluetooth_models.dart';
 import '../services/ble_service.dart';
@@ -45,9 +46,11 @@ class RequestDialog extends ConsumerWidget {
                     onPressed: () {
                       if (encounter == null) return;
 
+                      final requestId = const Uuid().v4();
+                      final peerId = encounter!.peerId;
                       final log = RequestLog(
-                        id: encounter!.peerId,
-                        encounterId: encounter!.peerId,
+                        id: requestId,
+                        encounterId: peerId,
                         teaser: encounter!.teaser,
                         status: RequestStatus.requested,
                         requestedAt: DateTime.now(),
@@ -56,13 +59,14 @@ class RequestDialog extends ConsumerWidget {
                           .read(mockRequestLogsProvider.notifier)
                           .addRequest(log);
 
-                      // Call Native BLE
-                      ref
-                          .read(bleServiceProvider)
-                          .requestFullText(encounter!.peerId);
+                      ref.read(bleServiceProvider).requestFullText(
+                            peerId: peerId,
+                            requestId: requestId,
+                          );
 
-                      // Navigate to detail screen to see the loading state
-                      context.pushReplacement('/detail/${encounter!.peerId}');
+                      // Detail/history identity is the immutable request log ID,
+                      // not the BLE peer ID which can be reused by later notices.
+                      context.pushReplacement('/detail/$requestId');
                     },
                     child: const Text('リクエスト'),
                   ),

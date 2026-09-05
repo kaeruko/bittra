@@ -103,54 +103,40 @@ class MockRequestLogs extends _$MockRequestLogs {
   }
 
   void addRequest(RequestLog log) {
-    if (!state.any((e) => e.id == log.id)) {
-      state = [log, ...state];
-      databaseServiceProvider.upsertRequestLog(log);
+    if (state.any((e) => e.id == log.id)) {
+      throw StateError('Duplicate request log id: ${log.id}');
     }
+    state = [log, ...state];
+    databaseServiceProvider.upsertRequestLog(log);
   }
 
   void updateRequest(
-    String encounterId,
+    String requestId,
     RequestStatus status, {
     String? body,
     String? error,
   }) {
-    final existingIndex = state.indexWhere((e) => e.encounterId == encounterId);
-    if (existingIndex >= 0) {
-      final newState = List<RequestLog>.from(state);
-      final req = newState[existingIndex];
-      final updated = req.copyWith(
-        status: status,
-        resolvedAt:
-            (status == RequestStatus.received ||
-                status == RequestStatus.failed ||
-                status == RequestStatus.timeout)
-            ? DateTime.now()
-            : null,
-        body: body ?? req.body,
-        error: error ?? req.error,
-      );
-      newState[existingIndex] = updated;
-      state = newState;
-      databaseServiceProvider.upsertRequestLog(updated);
-    } else {
-      final req = RequestLog(
-        id: encounterId,
-        encounterId: encounterId,
-        status: status,
-        requestedAt: DateTime.now(),
-        resolvedAt:
-            (status == RequestStatus.received ||
-                status == RequestStatus.failed ||
-                status == RequestStatus.timeout)
-            ? DateTime.now()
-            : null,
-        body: body,
-        error: error,
-      );
-      state = [req, ...state];
-      databaseServiceProvider.upsertRequestLog(req);
+    final existingIndex = state.indexWhere((e) => e.id == requestId);
+    if (existingIndex < 0) {
+      throw StateError('Request log not found: requestId=$requestId');
     }
+
+    final newState = List<RequestLog>.from(state);
+    final req = newState[existingIndex];
+    final updated = req.copyWith(
+      status: status,
+      resolvedAt:
+          (status == RequestStatus.received ||
+              status == RequestStatus.failed ||
+              status == RequestStatus.timeout)
+          ? DateTime.now()
+          : null,
+      body: body ?? req.body,
+      error: error ?? req.error,
+    );
+    newState[existingIndex] = updated;
+    state = newState;
+    databaseServiceProvider.upsertRequestLog(updated);
   }
 }
 
