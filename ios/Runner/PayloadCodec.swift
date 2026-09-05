@@ -10,21 +10,16 @@ enum PayloadCodec {
   private static let compactIdAlphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
 
   static func normalizeTeaser(_ input: String) -> String {
-    // 1) trim
     var s = input.trimmingCharacters(in: .whitespacesAndNewlines)
 
-    // 2) 制御文字を除去
     s.removeAll { ch in
       ch.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
     }
 
-    // 3) NFC
     s = s.precomposedStringWithCanonicalMapping
 
-    // 4) UI的に8文字固定
     if s.count > 8 { s = String(s.prefix(8)) }
 
-    // 5) UTF-8バイトで安全に切る（最大16B）
     s = clipUTF8ToMaxBytes(s, maxBytes: GATTProfile.maxTeaserUTF8Bytes)
     return s
   }
@@ -34,15 +29,11 @@ enum PayloadCodec {
     let teaserBytes = Data(t.utf8)
 
     var data = Data()
-    // magic (2B) little-endian
     data.append(UInt8(GATTProfile.magic & 0xFF))
     data.append(UInt8((GATTProfile.magic >> 8) & 0xFF))
-    // nonce (2B) little-endian
     data.append(UInt8(nonce & 0xFF))
     data.append(UInt8((nonce >> 8) & 0xFF))
-    // len (1B)
     data.append(UInt8(min(255, teaserBytes.count)))
-    // teaser
     data.append(teaserBytes)
     return data
   }
@@ -74,12 +65,26 @@ enum PayloadCodec {
   }
 
   static func decodeAdvert(_ data: Data) -> (senderId: UInt32, teaser: String)? {
-    if data.count < 5 { return nil }
-    let m0 = UInt16(data[0])
-    let m1 = UInt16(data[1]) << 8
-    let magic = m0 | m1
-    guard magic == GATTProfile.magic else { return nil }
+    if data.count >= 5 && hasLegacyMagic(data) {
+      return decodeLegacyAdvert(data)
+    }
+    return decodeCompactAdvert(data)
+  }
 
+  private static func decodeCompactAdvert(_ data: Data) -> (senderId: UInt32, teaser: String)? {
+    guard data.count >= 4 else { return nil }
+
+    let senderId = UInt32(data[0]) | (UInt32(data[1]) << 8) | (UInt32(data[2]) << 16)
+    guard senderId != 0 else { return nil }
+
+    let teaserBytes = data.subdata(in: 3..<data.count)
+    guard let teaser = String(data: teaserBytes, encoding: .utf8), !teaser.isEmpty else {
+      return nil
+    }
+    return (senderId, teaser)
+  }
+
+  private static func decodeLegacyAdvert(_ data: Data) -> (senderId: UInt32, teaser: String)? {
     let n0 = UInt16(data[2])
     let n1 = UInt16(data[3]) << 8
     let senderIdLow = n0 | n1
@@ -88,7 +93,10 @@ enum PayloadCodec {
     guard data.count >= 5 + len else { return nil }
 
     let teaserBytes = data.subdata(in: 5..<(5 + len))
-    let teaser = String(data: teaserBytes, encoding: .utf8) ?? ""
+    guard let teaser = String(data: teaserBytes, encoding: .utf8), !teaser.isEmpty else {
+      return nil
+    }
+
     let highOffset = 5 + len
     let senderIdHigh: UInt32
     if data.count >= highOffset + 2 {
@@ -100,7 +108,12 @@ enum PayloadCodec {
     return (senderId, teaser)
   }
 
-  // UTF-8を壊さず maxBytes 以内に切る
+  private static func hasLegacyMagic(_ data: Data) -> Bool {
+    let m0 = UInt16(data[0])
+    let m1 = UInt16(data[1]) << 8
+    return (m0 | m1) == GATTProfile.magic
+  }
+
   private static func clipUTF8ToMaxBytes(_ s: String, maxBytes: Int) -> String {
     var out = ""
     var used = 0

@@ -1,5 +1,8 @@
 package jp.cloxs.bitra.ble
 
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.text.Normalizer
 
@@ -7,52 +10,38 @@ object PayloadCodec {
 
     private const val COMPACT_LOCAL_NAME_PREFIX = "~"
     private const val COMPACT_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-    
+    private const val COMPACT_SENDER_ID_MASK = 0xFFFFFFL
+
     fun normalizeTeaser(input: String): String {
-        // 1) trim
         var s = input.trim()
-
-        // 2) 制御文字を除去
         s = s.replace(Regex("\\p{Cntrl}"), "")
-
-        // 3) NFC
         s = Normalizer.normalize(s, Normalizer.Form.NFC)
 
-        // 4) 8文字固定
         if (s.length > 8) {
             s = s.substring(0, 8)
         }
 
-        // 5) UTF-8最大18Bで切る
         return clipUTF8ToMaxBytes(s, GATTProfile.MAX_TEASER_UTF8_BYTES)
     }
 
     fun encodeAdvert(teaser: String, senderId: Long): ByteArray {
         val t = normalizeTeaser(teaser)
         val teaserBytes = t.toByteArray(StandardCharsets.UTF_8)
-        
-        val teaserLength = Math.min(255, teaserBytes.size)
-        val data = ByteArray(7 + teaserLength)
-        
-        // magic (2B) little endian
-        data[0] = (GATTProfile.MAGIC and 0xFF).toByte()
-        data[1] = ((GATTProfile.MAGIC shr 8) and 0xFF).toByte()
-        
-        // Low 16 bits stay in the old nonce position for compatibility.
-        data[2] = (senderId and 0xFF).toByte()
-        data[3] = ((senderId shr 8) and 0xFF).toByte()
-        
-        // len (1B)
-        data[4] = teaserLength.toByte()
-        
-        // teaser
-        System.arraycopy(teaserBytes, 0, data, 5, teaserLength)
+        require(teaserBytes.isNotEmpty()) { "teaser must not be empty" }
+        require(teaserBytes.size <= GATTProfile.MAX_TEASER_UTF8_BYTES) {
+            "teaser exceeds ${GATTProfile.MAX_TEASER_UTF8_BYTES} UTF-8 bytes"
+        }
 
-        // New receivers combine these optional trailing bytes with the old
-        // nonce field. Old receivers safely ignore them.
-        data[5 + teaserLength] = ((senderId shr 16) and 0xFF).toByte()
-        data[6 + teaserLength] = ((senderId shr 24) and 0xFF).toByte()
-        
+        // Legacy BLE scan responses have 27 bytes available for manufacturer
+        // payload after the AD header and company identifier. Store a 24-bit
+        // stable sender id followed by up to 24 UTF-8 teaser bytes so Japanese
+        // titles can use the documented full 8 characters.
+        val compactSenderId = compactSenderId(senderId)
+        val data = ByteArray(3 + teaserBytes.size)
+        data[0] = (compactSenderId and 0xFF).toByte()
+        data[1] = ((compactSenderId shr 8) and 0xFF).toByte()
+        data[2] = ((compactSenderId shr 16) and 0xFF).toByte()
+        System.arraycopy(teaserBytes, 0, data, 3, teaserBytes.size)
         return data
     }
 
@@ -70,25 +59,41 @@ object PayloadCodec {
         val teaser = normalizeTeaser(encoded.drop(3))
         return if (teaser.isEmpty()) null else AdvertResult(senderId, teaser)
     }
-    
+
     data class AdvertResult(val senderId: Long, val teaser: String)
-    
+
     fun decodeAdvert(data: ByteArray): AdvertResult? {
-        if (data.size < 5) return null
-        
-        val m0 = data[0].toInt() and 0xFF
-        val m1 = (data[1].toInt() and 0xFF) shl 8
-        val magic = m0 or m1
-        
-        if (magic != GATTProfile.MAGIC) return null
-        
+        if (data.size >= 5 && hasLegacyMagic(data)) {
+            return decodeLegacyAdvert(data)
+        }
+        return decodeCompactAdvert(data)
+    }
+
+    private fun decodeCompactAdvert(data: ByteArray): AdvertResult? {
+        if (data.size < 4) return null
+
+        val senderId =
+            (data[0].toLong() and 0xFF) or
+                ((data[1].toLong() and 0xFF) shl 8) or
+                ((data[2].toLong() and 0xFF) shl 16)
+        if (senderId == 0L) return null
+
+        val teaserBytes = data.copyOfRange(3, data.size)
+        val teaser = decodeUtf8(teaserBytes) ?: return null
+        if (teaser.isEmpty()) return null
+        return AdvertResult(senderId, teaser)
+    }
+
+    private fun decodeLegacyAdvert(data: ByteArray): AdvertResult? {
         val n0 = data[2].toInt() and 0xFF
         val n1 = (data[3].toInt() and 0xFF) shl 8
         val senderIdLow = n0 or n1
-        
+
         val len = data[4].toInt() and 0xFF
-        val actualLen = Math.min(len, data.size - 5)
-        val teaser = String(data, 5, actualLen, StandardCharsets.UTF_8)
+        if (data.size < 5 + len) return null
+        val teaserBytes = data.copyOfRange(5, 5 + len)
+        val teaser = decodeUtf8(teaserBytes) ?: return null
+        if (teaser.isEmpty()) return null
 
         val highOffset = 5 + len
         val senderIdHigh = if (data.size >= highOffset + 2) {
@@ -98,22 +103,54 @@ object PayloadCodec {
             0L
         }
         val senderId = (senderIdLow.toLong() and 0xFFFF) or (senderIdHigh shl 16)
-        
+
         return AdvertResult(senderId, teaser)
     }
 
+    private fun hasLegacyMagic(data: ByteArray): Boolean {
+        val m0 = data[0].toInt() and 0xFF
+        val m1 = (data[1].toInt() and 0xFF) shl 8
+        return (m0 or m1) == GATTProfile.MAGIC
+    }
+
+    private fun compactSenderId(senderId: Long): Long {
+        var compact = senderId and COMPACT_SENDER_ID_MASK
+        if (compact == 0L) compact = 1L
+
+        // Reserve the old magic prefix so decoders can distinguish the new
+        // compact payload from the legacy format without spending a version byte.
+        if ((compact and 0xFFFFL) == GATTProfile.MAGIC.toLong()) {
+            compact = compact xor 0x000001L
+        }
+        return compact
+    }
+
+    private fun decodeUtf8(bytes: ByteArray): String? {
+        return try {
+            StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+        } catch (_: CharacterCodingException) {
+            null
+        }
+    }
+
     private fun clipUTF8ToMaxBytes(s: String, maxBytes: Int): String {
-        var out = StringBuilder()
+        val out = StringBuilder()
         var used = 0
-        for (i in 0 until s.length) {
-            val ch = s[i]
-            // Surrogate pairs handling simplified for MVP (if needed use codePoints)
-            val b = ch.toString().toByteArray(StandardCharsets.UTF_8).size
-            if (used + b > maxBytes) {
+        var index = 0
+        while (index < s.length) {
+            val codePoint = s.codePointAt(index)
+            val text = String(Character.toChars(codePoint))
+            val bytes = text.toByteArray(StandardCharsets.UTF_8).size
+            if (used + bytes > maxBytes) {
                 break
             }
-            out.append(ch)
-            used += b
+            out.append(text)
+            used += bytes
+            index += Character.charCount(codePoint)
         }
         return out.toString()
     }

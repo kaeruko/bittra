@@ -9,7 +9,7 @@ object GATTProfile {
     val ACK_CHAR_UUID: UUID = UUID.fromString("9E2A0004-4B5A-4F5E-9A9D-1B7A00000004")
 
     const val MAGIC: Int = 0x6274 // "bt"
-    const val MAX_TEASER_UTF8_BYTES = 20
+    const val MAX_TEASER_UTF8_BYTES = 24
     const val MANUFACTURER_ID = 0x0118
     const val PREVIEW_BYTES = 120
 }
