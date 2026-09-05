@@ -121,11 +121,11 @@ class _TermsText extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyLarge,
         ),
         const SizedBox(height: 24),
-        Text('1. 投稿内容 / User-Generated Content', style: titleStyle),
+        Text('1. お知らせ内容 / User-Generated Content', style: titleStyle),
         const SizedBox(height: 8),
         const Text(
           'びっとらでは、近くの利用者が作成したおしらせをBluetooth経由で受信できます。'
-          '投稿者は、自分が送信する内容について責任を負います。\n\n'
+          'お知らせの送信者は、自分が送信する内容について責任を負います。\n\n'
           'Bittra can receive notices created by nearby users via Bluetooth. '
           'Users are responsible for the content they transmit.',
         ),
