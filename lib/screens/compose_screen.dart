@@ -78,7 +78,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
           padding: const EdgeInsets.all(16.0),
           children: [
             const Text(
-              '不適切な表現や嫌がらせを目的としたお知らせは禁止されています。',
+              '近くの人に届けたいことを書いてみよう。',
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
