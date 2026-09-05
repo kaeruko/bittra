@@ -2,10 +2,9 @@ import Foundation
 
 enum PayloadCodec {
 
-  // iOS only lets peripheral apps advertise service UUIDs and a local name.
-  // Keep the iOS local-name representation compact enough to coexist with the
-  // 128-bit Bittra service UUID. The binary format remains in use for Android
-  // manufacturer data and for decoding older senders.
+  // iOS peripheral advertising uses a compact local name for the teaser.
+  // The local name is 1 prefix byte + 3 sender-id bytes + up to 24 teaser
+  // bytes, for a maximum of 28 UTF-8 bytes.
   private static let compactLocalNamePrefix = "~"
   private static let compactIdAlphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
 
@@ -39,12 +38,20 @@ enum PayloadCodec {
   }
 
   static func encodeLocalName(teaser: String, senderId: UInt16) -> String {
+    let normalizedTeaser = normalizeTeaser(teaser)
+    precondition(!normalizedTeaser.isEmpty, "teaser must not be empty")
+
     let encodedId = String([
       compactIdAlphabet[Int((senderId >> 12) & 0x0F)],
       compactIdAlphabet[Int((senderId >> 6) & 0x3F)],
       compactIdAlphabet[Int(senderId & 0x3F)]
     ])
-    return compactLocalNamePrefix + encodedId + normalizeTeaser(teaser)
+    let localName = compactLocalNamePrefix + encodedId + normalizedTeaser
+    precondition(
+      localName.utf8.count <= GATTProfile.maxCompactLocalNameUTF8Bytes,
+      "compact local name exceeds \(GATTProfile.maxCompactLocalNameUTF8Bytes) UTF-8 bytes"
+    )
+    return localName
   }
 
   static func decodeLocalName(_ localName: String) -> (senderId: UInt32, teaser: String)? {
